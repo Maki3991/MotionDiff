@@ -77,3 +77,16 @@ This is illustrative, not a locked serialization format:
 - Mark missing or low-confidence keypoints as unavailable for that comparison, or reduce their contribution according to an explicit rule.
 - Return a processing/quality status when no usable person or too few required keypoints are detected.
 - Do not convert missing data into a zero-valued joint position.
+
+## 8. Implemented MediaPipe file adapter (2026-10-02)
+
+`tools/export_mediapipe_json.py` implements the prototype per-frame schema `mediapipe-pose-frame/1.0`. It exports every decoded frame, with an independent run summary under `_meta/`. The engine is still a benchmark candidate.
+
+- Frame fields: `frame_index`, `timestamp_ms`, `timestamp_source`, `inference_timestamp_ms`, `image_width`, `image_height`, `engine`, `source_video`, `status`, `people`.
+- Each person has a frame-local `person_index` and 33 semantically named `keypoints`. This index is not a persistent identity.
+- Keypoint `x`/`y` are image-space pixels obtained from native normalized coordinates times the decoded image width/height. `normalized_x`/`normalized_y` are MediaPipe image-dimension normalization, NOT body-centred or shoulder-width normalization. Values are preserved without clamping.
+- `normalized_z` preserves MediaPipe normalized landmark depth; `world` preserves optional model-estimated x/y/z in metres and any supplied visibility/presence. These are not calibrated ground-truth 3D.
+- `visibility` and `presence` are preserved separately. For this adapter, `confidence` is nullable and set to null: MediaPipe does not expose an interchangeable OpenPose joint confidence. No generic detection-confidence score is invented; downstream confidence gates require an explicit adapter-specific rule.
+- Missing/nonfinite numeric values become JSON null, not zero. A frame with no detected pose is retained with `people: []` and `status: no_pose_detected`.
+- Filename: `<video_stem>_<zero_based_frame_index:012d>_keypoints.json`. Similar names do not imply BODY_25 compatibility. The existing BODY_25-only analysis scripts require a separate adapter before consuming this output.
+- Details, environment setup, and timing boundaries: `MEDIAPIPE_EXPORT.md`.

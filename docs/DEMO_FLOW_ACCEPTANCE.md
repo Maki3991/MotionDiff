@@ -1,33 +1,33 @@
 # Demo Flow and Acceptance (Draft)
 
-- Status: Draft; runtime thresholds pending benchmark
+- Status: Prototype acceptance; runtime thresholds pending broader benchmark
 - Last updated: 2026-10-02
 
 ## 1. Target flow
-1. Load the prepared reference video and its precomputed pose sequence.
-2. Show the participant the capture instructions for the selected action and camera setup.
-3. Record the participant with the same demo camera setup.
-4. Stop recording and process the clip.
-5. Compare pose sequences through the agreed stages: direct data comparison, normalized feature comparison, and temporal alignment.
-6. Present a pose visualization, overall similarity score, and the leading joint/phase differences.
+1. Open the local MotionDiff browser app.
+2. Select the coach/reference video A and student video B.
+3. Process both videos with MediaPipe Pose Landmarker, preserving a timestamped JSON record for every decoded frame.
+4. Normalize the visible body landmarks, align the sequences in time with DTW and compute joint position and angle differences.
+5. Present the two videos, an exploratory similarity index, and the leading joint/phase differences.
 
 The initial target is record-then-process, not guaranteed live coaching during movement.
 
 ## 2. Capture assumptions
 - One participant should be visible and sufficiently unobstructed.
 - Reference and participant recordings should use the same prescribed camera setup.
-- The demo should state the expected framing and action instructions after the action is selected.
+- The first action is the standing side leg raise with accompanying arm movement in `videos/test2`.
+- The demo should state the expected framing and action instructions before a new clip is recorded.
 - Exact camera height, distance, angle, frame rate, clip duration, and lighting constraints are TBD.
 
 ## 3. Acceptance checklist
-A demo build is acceptable for the chosen action when:
-- The reference pose sequence can be loaded without reprocessing the reference video during the participant's turn.
-- A participant clip can be captured and submitted for processing.
-- The system produces a timestamped pose sequence or a clear processing failure.
-- The comparison returns an overall score and localized joint/phase differences.
-- The result view can render the pose visualization and comparison output.
-- Unsupported movements are visibly marked and cannot be mistaken for supported analysis.
-- Processing latency and clip length have been measured on the actual demo laptop and are displayed or communicated honestly.
+A demo build is acceptable for the first prototype when:
+- The two `test2` videos can be selected through the browser and processed by MediaPipe.
+- Each decoded frame produces a timestamped JSON record, including frames with no detected person.
+- The comparison returns an exploratory index and localized differences for visible shoulders, elbows, wrists, hips, knees or ankles.
+- The result view can play both source videos and names the main differing joint and action-progress segment.
+- An invalid file, missing person or insufficient landmarks produces a clear failure or unable-to-judge state.
+- A new recording made by a different person under the same camera instructions can be submitted for the team's follow-up acceptance check.
+- Processing latency and clip length are measured on the actual demo laptop and reported honestly.
 
 ## 4. Failure cases to handle
 - Camera permission denied or camera unavailable.

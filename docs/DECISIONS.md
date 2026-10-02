@@ -11,15 +11,25 @@
 | D-003 | Comparison includes direct frame/keypoint comparison, normalized-feature comparison, and temporal sequence alignment. | Implement these as stages; sequence alignment builds on pose/features and does not solve camera-view differences. |
 | D-004 | The capture/processing approach is record-then-process; runtime targets will be set after measuring the selected engine on the demo laptop. | Do not promise an unmeasured latency or true live feedback. |
 | D-005 | Results should include an overall similarity score and localized joint and/or movement-phase differences, alongside pose visualization. | Exact score formula and correction language depend on the selected action and its rules. |
-| D-006 | No specific action has been selected yet. | Keep the action catalog and comparison framework configurable; do not hard-code a named action as settled scope. |
+| D-006 | Earlier draft: no specific action had been selected. Superseded by D-007 for the current prototype. | Keep the action catalog configurable after the first example; do not treat the first action as universal support. |
+| D-007 | For the first runnable prototype, use the standing side leg raise with accompanying arm movement shown in `videos/test2/A-标准.mp4` and `videos/test2/B-学员.mp4`. | The initial comparison covers visible shoulders, elbows, wrists, hips, knees and ankles for one complete action segment. |
+| D-008 | The first application runs locally on the current Windows computer and accepts two local videos in a browser: reference A and student B. | The server processes both files locally and retains source videos, per-frame MediaPipe JSON and a comparison result under one run directory. |
+| D-009 | Reference and student recordings should follow the same camera direction, approximate height and distance, with one person visible. | The first version reports a capture limitation when this assumption is not met; it does not promise arbitrary-viewpoint invariance. |
+| D-010 | First-version feedback is relative to the selected reference video and must point to a joint and action-progress segment. | Feedback can say that a joint is higher, lower or shifted relative to the reference; it does not claim a universal correct form or safety advice. |
+| D-011 | Use MediaPipe Pose Landmarker for the current prototype after the test2 full-frame run; retain OpenPose as a benchmark and fallback comparison source. | MediaPipe is behind an adapter, and its 33-point schema is not treated as OpenPose BODY_25. |
+| D-012 | The current comparison normalizes each frame around the shoulder midpoint and by shoulder width, filters points below visibility/presence 0.5, and uses DTW over valid upper- and lower-body coordinates. | If either clip has under 50% valid normalized frames, or under 50% of aligned rows have at least four paired landmarks, return `insufficient_data` with reasons and no similarity index/findings. These are prototype quality gates, not calibrated accuracy guarantees. |
+| D-013 | Each finding must retain the peak aligned frame and timestamp from both clips and let the user seek both videos to that evidence. | A finding can be inspected in the source footage; its clip-progress percentage is not a semantic repetition label. |
+| D-014 | Visual inspection of `test2` selects a standing side-leg-raise and arm-raising sequence as the first supported comparison scope. The clips show different people and full-body frontal framing, but differ in duration and repetition timing. | This validates a runnable cross-person example only. Whole-clip DTW cannot confirm that corresponding semantic repetitions match; the report remains relative evidence, not coaching correctness. |
 
 ## Open decisions to resolve before action implementation
 
-1. Which action and action segment will be the first supported example?
-2. Which pose engine will run in the demo: current OpenPose build, MediaPipe, or another candidate? Benchmark on the target laptop first.
-3. What normalization formula and stable keypoint naming/mapping will the engine-neutral contract use?
-4. What are the camera/framing instructions, maximum clip length, and acceptable post-recording wait time?
-5. For the chosen action, what features, temporal alignment settings, score mapping, and localized feedback rules define acceptable performance?
+1. What additional actions should be supported after the first side leg raise example?
+2. What accuracy and waiting-time targets should replace the current measured prototype values?
+3. How should the exploratory similarity index be calibrated with multiple labelled examples?
+4. What tolerance for camera height, distance and viewpoint should be accepted after validation?
+5. Which human reviewer will confirm whether relative findings are useful for the chosen action, and provide a fresh recording beyond the fixed `test2` clips?
 
 ## Change log
 - 2026-10-02: Initial project scope and team selections recorded.
+- 2026-10-02: Added a MediaPipe per-frame JSON exporter for the requested A.mp4 speed comparison. No sampling; CPU, Full model bundle and VIDEO mode are the documented first-run configuration, with IMAGE mode available as a separate experiment. Every frame is retained even with no detected person. This adds an adapter and benchmark preparation only; it does not select the production engine or establish performance/accuracy results. See MEDIAPIPE_EXPORT.md.
+- 2026-10-02: Team questionnaire selected a local browser demo with two videos, same-camera capture guidance, relative reference-based feedback and new-video acceptance. Visual inspection identifies a standing side-leg-raise and arm-raising sequence in `test2`; the videos show different participants but are not identical in duration or repetition timing. MediaPipe full-frame processing and DTW comparison ran end to end. The latest run, `46088aef862c42f58130560ea5fe6cbc`, processed 396 and 298 frames in 18.20 seconds end to end; the 75.4 similarity index remains uncalibrated. Added explicit low-coverage unable-to-judge gates and paired evidence timestamps. Fresh-recording acceptance remains open.

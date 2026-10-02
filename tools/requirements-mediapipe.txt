@@ -1,0 +1,4 @@
+# Official prebuilt Python SDK; keep the benchmark environment isolated.
+mediapipe==1.0.1
+# MediaPipe already depends on this OpenCV distribution; do not install both.
+opencv-contrib-python==4.13.0.92

@@ -1,0 +1,6 @@
+videos
+.venv-mediapipe/
+.cache/
+models/mediapipe/
+__pycache__/
+*.pyc

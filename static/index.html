@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MotionDiff · 动作比较</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">MD</span><span>MotionDiff</span></div>
+    <div class="topbar-note">MediaPipe 动作比较 · 本机处理</div>
+  </header>
+
+  <main class="shell">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">参考动作 / 学员动作</p>
+        <h1>把两个视频放在同一套动作轨迹上比较</h1>
+        <p class="lede">选择教练参考视频和学员视频。系统会逐帧提取人体关键点，按动作进度对齐，并标出可回看的位置差异。</p>
+      </div>
+      <div class="protocol">
+        <span class="protocol-dot"></span>
+        <div><strong>建议拍摄条件</strong><br><span>同一方向、相近高度与距离；一人完整出镜</span></div>
+      </div>
+    </section>
+
+    <section class="workspace-panel" aria-labelledby="input-title">
+      <div class="section-head">
+        <div><p class="eyebrow">输入</p><h2 id="input-title">选择两段视频</h2></div>
+        <span class="format-note">MP4 · 本机上传</span>
+      </div>
+      <form id="analysis-form">
+        <div class="upload-grid">
+          <label class="upload-box" for="reference-file">
+            <span class="upload-index">01</span>
+            <span class="upload-title">教练 / 参考动作</span>
+            <span class="upload-subtitle">作为比较基准</span>
+            <span class="file-name" id="reference-name">选择视频文件</span>
+            <input id="reference-file" name="reference" type="file" accept="video/*" required>
+          </label>
+          <label class="upload-box" for="student-file">
+            <span class="upload-index">02</span>
+            <span class="upload-title">学员动作</span>
+            <span class="upload-subtitle">需要查看差异的动作</span>
+            <span class="file-name" id="student-name">选择视频文件</span>
+            <input id="student-file" name="student" type="file" accept="video/*" required>
+          </label>
+        </div>
+        <div class="form-actions">
+          <p class="privacy-note">视频和分析结果保存在当前电脑的 MotionDiff 项目目录。</p>
+          <button class="primary-button" id="analyze-button" type="submit">开始分析 <span aria-hidden="true">→</span></button>
+        </div>
+      </form>
+    </section>
+
+    <section class="status-panel" id="status-panel" hidden aria-live="polite">
+      <div class="status-row"><span class="status-label" id="status-label">准备中</span><span id="status-percent">0%</span></div>
+      <div class="progress-track"><div id="progress-bar"></div></div>
+      <p id="status-message">等待上传</p>
+    </section>
+
+    <section class="results" id="results" hidden>
+      <div class="section-head result-head">
+        <div><p class="eyebrow">分析报告</p><h2>参考动作与学员动作的差异</h2></div>
+        <div class="result-actions"><a id="report-link" class="text-button" href="#" target="_blank">打开 Markdown 报告</a><button id="new-analysis" class="quiet-button" type="button">重新分析</button></div>
+      </div>
+
+      <div class="judgement-note" id="judgement-note" hidden></div>
+
+      <div class="metrics-grid">
+        <article class="metric"><span class="metric-label">未校准相似度指数</span><strong id="metric-score">—</strong><span class="metric-note">仅用于本次相对比较</span></article>
+        <article class="metric"><span class="metric-label">平均位置差</span><strong id="metric-delta">—</strong><span class="metric-note">单位：肩宽</span></article>
+        <article class="metric"><span class="metric-label">时间对齐覆盖</span><strong id="metric-coverage">—</strong><span class="metric-note">参考 / 学员轨迹</span></article>
+        <article class="metric"><span class="metric-label">处理耗时</span><strong id="metric-time">—</strong><span class="metric-note">包含逐帧 JSON 导出</span></article>
+      </div>
+
+      <div class="video-grid">
+        <article class="video-card"><div class="video-label"><span>参考 A</span><span id="reference-video-name"></span></div><video id="reference-video" controls></video></article>
+        <article class="video-card"><div class="video-label"><span>学员 B</span><span id="student-video-name"></span></div><video id="student-video" controls></video></article>
+      </div>
+
+      <article class="pose-preview report-section">
+        <div class="section-head compact"><div><p class="eyebrow">对应姿态</p><h3>主要差异帧的关键点</h3></div><span class="format-note">参考 / 学员</span></div>
+        <div class="pose-canvas-grid"><div><canvas id="reference-pose" width="420" height="260"></canvas><span>参考动作</span></div><div><canvas id="student-pose" width="420" height="260"></canvas><span>学员动作</span></div></div>
+      </article>
+
+      <div class="report-grid">
+        <article class="report-section findings-section"><div class="section-head compact"><div><p class="eyebrow">定位结果</p><h3>优先回看的差异</h3></div><span id="finding-count" class="count-badge">0</span></div><div id="findings" class="findings"></div></article>
+        <article class="report-section"><div class="section-head compact"><div><p class="eyebrow">动作进度</p><h3>各阶段位置差</h3></div></div><div class="table-wrap"><table><thead><tr><th>阶段</th><th>最大差异部位</th><th>平均差</th></tr></thead><tbody id="phase-table"></tbody></table></div></article>
+      </div>
+      <div class="limitations" id="limitations"></div>
+    </section>
+  </main>
+  <footer>MotionDiff · MediaPipe Pose Landmarker · 当前结果用于探索性比较</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
