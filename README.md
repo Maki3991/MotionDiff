@@ -13,7 +13,7 @@ Set-Location "D:\Softwares\Programming Projects\xi'an-hackathon\MotionDiff"
 
 保持终端运行，在浏览器访问 **http://127.0.0.1:8765/**，再选择两段 MP4。`static/index.html` 不能直接双击打开：页面依赖应用服务器提供 `/static/styles.css`、JavaScript 和 `/api/analyze`。停止服务可在终端按 `Ctrl+C`。如果 8765 端口被占用，用 `& .\.venv-mediapipe\Scripts\python.exe .\app.py --port 8766` 并访问 `http://127.0.0.1:8766/`。
 
-首次在另一台电脑克隆后，需要按照 [环境说明](docs/MEDIAPIPE_EXPORT.md) 建立 `.venv-mediapipe` 并下载模型到 `models/mediapipe/pose_landmarker_full.task`；这些本机依赖不在 Git 仓库中。详细功能与结果说明见 [APP_RUN.md](docs/APP_RUN.md)。
+首次在另一台电脑克隆后，需要按照 [环境说明](docs/MEDIAPIPE_EXPORT.md) 建立 `.venv-mediapipe` 并下载模型到 `models/mediapipe/pose_landmarker_full.task`；这些本机依赖不在 Git 仓库中。当前进度与下一步见 [STATUS.md](docs/STATUS.md)，详细功能与结果说明见 [APP_RUN.md](docs/APP_RUN.md)。
 
 ## Git 同步范围
 

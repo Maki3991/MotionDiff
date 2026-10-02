@@ -48,3 +48,10 @@ A demo build is acceptable for the first prototype when:
 - maximum participant clip duration;
 - maximum acceptable processing time after recording;
 - how many localized differences to show.
+
+## 6. Next report-usability checkpoint (planned, not achieved)
+
+- A named team reviewer checks the leading findings against both linked video times, recording whether joint, side, direction and corresponding clip interval are supported by the footage. Unclear matches are marked uncertain rather than counted as correct.
+- With a fresh same-action repeat and a fresh deliberate variation outside `test1`/`test2`, check that ordinary variation does not create many unsupported claims and that the intended change is located in the correct body area and interval.
+- The result must distinguish measured difference, relative-to-reference suggestion, and limits caused by 2D projection or alignment; it must not label the uncalibrated index as a pass/fail score.
+- Automatic camera/viewpoint mismatch warning and a retry/continue choice remain deferred TODOs. They have no acceptance threshold yet and are not part of the current working app. See [STATUS.md](STATUS.md).

@@ -1,6 +1,6 @@
 # MotionDiff Product Requirements (Draft)
 
-- Status: Local prototype runnable; new-recording acceptance pending
+- Status: Local prototype runnable; report-usability improvement planned, new-recording acceptance pending
 - Last updated: 2026-10-02
 
 ## 1. Product goal
@@ -48,5 +48,11 @@ The capture and processing interaction is record-then-process for the initial de
 - Providing a universal exercise or sports-coaching model.
 - Promising real-time performance before testing the selected inference engine on the target laptop.
 
-## 6. Open product decisions
+## 6. Next iteration (selected priority; not implemented)
+
+Prioritize review and improvement of the existing report against its paired reference/student video evidence. The next result should let a team reviewer confirm or reject each leading difference by body part, side, matched timestamps, direction and uncertainty. Refine ranking or wording only when that review supports the change; the similarity index remains exploratory. Use fresh recordings of the currently supported action for acceptance.
+
+Camera/viewpoint comparability detection is a later TODO. Existing short clips complete in under 20 seconds per pair on this computer, so the current plan is to evaluate comparability after full extraction before adding an early-abort preview. No 60%/70% similarity cutoff can be treated as a camera-error classifier. Continue to prescribe similar camera direction, height and distance; longer clips and a labelled camera-variation set may justify revisiting this order. The work split and its unfinished tasks are tracked in [STATUS.md](STATUS.md).
+
+## 7. Open product decisions
 See docs/DECISIONS.md. The first action and current MediaPipe prototype are selected for this implementation; score calibration, camera tolerance, semantic action alignment and fresh-recording acceptance remain unverified.
