@@ -44,6 +44,7 @@ QUALITY_THRESHOLD = 0.5
 MIN_VALID_FRAME_COVERAGE = 0.5
 MIN_COMPARABLE_PATH_COVERAGE = 0.5
 MIN_VALID_JOINT_PAIRS = 4
+MIN_FINDING_MEAN_DELTA = 0.10
 
 
 def finite(value: Any) -> float | None:
@@ -283,7 +284,7 @@ def compare(reference: dict, target: dict, *, reference_label: str = "参考视�
         metric["mean_dy"] = mean(value[1] for value in vectors) if vectors else None
         metric["coverage"] = len(joint_values[name]) / max(1, len(path))
         joint_metrics[name] = metric
-        if metric["mean"] is not None and metric["mean"] >= 0.05:
+        if metric["mean"] is not None and metric["mean"] >= MIN_FINDING_MEAN_DELTA:
             direction = []
             phase_means = {
                 phase: summarize(phase_joint_values[(phase, name)])["mean"]
@@ -363,6 +364,7 @@ def compare(reference: dict, target: dict, *, reference_label: str = "参考视�
             "quality_threshold": QUALITY_THRESHOLD,
             "minimum_valid_frame_coverage": MIN_VALID_FRAME_COVERAGE,
             "minimum_comparable_path_coverage": MIN_COMPARABLE_PATH_COVERAGE,
+            "minimum_finding_mean_delta_shoulder_widths": MIN_FINDING_MEAN_DELTA,
             "distance_unit": "shoulder_widths",
             "score": "un-calibrated similarity index = max(0, 100 * (1 - mean_delta / 0.5))",
         },
@@ -375,7 +377,7 @@ def compare(reference: dict, target: dict, *, reference_label: str = "参考视�
                       "comparable_path_coverage": comparable_path_coverage},
         "summary": {"mean_position_delta_shoulder_widths": overall_delta,
                     "similarity_index": similarity,
-                    "finding_count": len(findings)},
+                    "finding_count": len(findings[:6])},
         "joints": joint_metrics,
         "angles": angle_metrics,
         "findings": findings[:6],

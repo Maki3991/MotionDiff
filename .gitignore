@@ -4,3 +4,8 @@ videos
 models/mediapipe/
 __pycache__/
 *.pyc
+
+# Generated per-run videos, pose JSON and comparison reports.
+/analysis/app_runs/
+/analysis/results/
+/reports/

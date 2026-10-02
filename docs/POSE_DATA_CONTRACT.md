@@ -1,10 +1,10 @@
-# Pose Data Contract (Draft)
+# Pose Data Contract
 
-- Status: Draft; engine-neutral interface
+- Status: MediaPipe prototype contract; engine-neutral boundaries retained
 - Last updated: 2026-10-02
 
 ## 1. Purpose
-Define the boundary between pose extraction and movement comparison. The contract must work before the first supported action is selected and must allow the pose engine to change.
+Define the boundary between pose extraction and movement comparison. Preserve engine output and allow the pose engine to change without treating extracted landmarks as an action judgment.
 
 ## 2. Required per-frame fields
 A pose sequence should preserve, at minimum:
@@ -25,7 +25,7 @@ The selected interface choice is to provide raw keypoints plus generic normalize
 
 - Raw coordinates are retained for visualization, debugging, and recalculation.
 - Normalized coordinates are intended to reduce nuisance variation such as image size, subject scale, or subject position.
-- The exact normalization reference (body center, torso scale, or another method) is not yet selected; record it in docs/DECISIONS.md before treating normalized values as production data.
+- The current comparison centers each frame on the shoulder midpoint and scales by shoulder-to-shoulder distance. This prototype choice does not guarantee invariance to camera viewpoint or individual body proportions.
 - A monocular model's estimated z/world coordinates must not be described as calibrated ground-truth 3D.
 
 ## 4. Derived features and action-specific data
@@ -41,7 +41,16 @@ The selected scope includes all three stages:
 
 Temporal alignment does not by itself solve different camera viewpoints. Initial capture is expected to use the same camera setup; exact tolerances remain TBD.
 
-## 6. Example conceptual payload
+## 6. Current comparison quality gates
+
+- A keypoint is usable when its available `visibility` and `presence` values are both at least 0.5. Missing values are preserved by extraction; the current comparison rule does not substitute an OpenPose confidence score.
+- At least 50% of frames in each clip must have a usable shoulder scale and four or more usable comparison landmarks.
+- At least 50% of DTW aligned rows must contain four or more paired landmarks. Otherwise status is `insufficient_data`, the report explains why, and no similarity index or findings are emitted.
+- A joint appears as a main finding only when its mean normalized difference reaches 0.10 shoulder widths. This temporary floor suppressed the one available same-person repeat control; it is not a broadly calibrated tolerance.
+- These thresholds make missing-data failure explicit. They are not calibrated accuracy limits and do not identify whether both clips show the same semantic action.
+- Each finding retains a peak frame index and timestamp from both videos so the UI can seek to the evidence.
+
+## 7. Example conceptual payload
 This is illustrative, not a locked serialization format:
 
 ~~~json
@@ -72,13 +81,13 @@ This is illustrative, not a locked serialization format:
 }
 ~~~
 
-## 7. Failure and confidence handling
+## 8. Failure and confidence handling
 - Preserve confidence values through comparison.
 - Mark missing or low-confidence keypoints as unavailable for that comparison, or reduce their contribution according to an explicit rule.
 - Return a processing/quality status when no usable person or too few required keypoints are detected.
 - Do not convert missing data into a zero-valued joint position.
 
-## 8. Implemented MediaPipe file adapter (2026-10-02)
+## 9. Implemented MediaPipe file adapter (2026-10-02)
 
 `tools/export_mediapipe_json.py` implements the prototype per-frame schema `mediapipe-pose-frame/1.0`. It exports every decoded frame, with an independent run summary under `_meta/`. The engine is still a benchmark candidate.
 
