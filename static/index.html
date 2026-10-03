@@ -3,16 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MotionDiff · 动作比较</title>
+  <title>MotionDiff · 动作库</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-mark">MD</span><span>MotionDiff</span></div>
-    <div class="topbar-note">MediaPipe 动作比较 · 本机处理</div>
+    <div class="topbar-note">MediaPipe 动作比较 · 服务端处理</div>
   </header>
 
   <main class="shell">
+    <section class="catalog-view" id="catalog-view" aria-labelledby="catalog-title">
+      <div class="catalog-hero">
+        <div>
+          <p class="eyebrow">动作库 / Motion Library</p>
+          <h1 id="catalog-title">找到你想比较的动作</h1>
+          <p class="lede">先选择训练类别，再进入具体动作。我们会逐步扩展不同运动项目的动作分析能力。</p>
+        </div>
+        <div class="catalog-meta"><strong>01</strong><span>选择类别</span></div>
+      </div>
+      <div class="category-grid" id="category-grid"></div>
+    </section>
+
+    <section class="action-view" id="action-view" hidden aria-labelledby="action-title">
+      <div class="page-nav"><button class="back-button" id="back-to-catalog" type="button" aria-label="返回动作类别">← <span>动作类别</span></button><span class="step-label">02 / 选择动作</span></div>
+      <div class="catalog-hero action-hero">
+        <div>
+          <p class="eyebrow" id="action-eyebrow">动作类别</p>
+          <h1 id="action-title">选择具体动作</h1>
+          <p class="lede">选择一个动作进入分析。标记为“即将上线”的动作会保留在动作库中，分析能力正在建设。</p>
+        </div>
+        <div class="catalog-meta"><strong id="action-count">0</strong><span>个动作</span></div>
+      </div>
+      <div class="action-grid" id="action-grid"></div>
+    </section>
+
+    <section class="coming-view" id="coming-view" hidden aria-labelledby="coming-title">
+      <div class="page-nav"><button class="back-button" id="back-to-actions" type="button" aria-label="返回动作列表">← <span>动作列表</span></button><button class="back-button" id="back-to-catalog-from-coming" type="button" aria-label="返回动作类别"><span>动作类别</span></button></div>
+      <div class="coming-panel">
+        <span class="coming-mark" aria-hidden="true">···</span>
+        <p class="eyebrow" id="coming-category">动作库</p>
+        <h1 id="coming-title">这个动作正在开发</h1>
+        <p class="lede" id="coming-description">我们正在为这个动作准备采集规范、姿态指标和对比报告，敬请期待。</p>
+        <div class="coming-actions"><button class="primary-button" id="coming-back-action" type="button">返回动作列表 <span aria-hidden="true">↗</span></button><button class="quiet-button" id="coming-back-library" type="button">浏览其他类别</button></div>
+      </div>
+    </section>
+
+    <section class="analysis-view" id="analysis-view" hidden>
+    <div class="page-nav"><button class="back-button" id="back-to-actions-from-analysis" type="button" aria-label="返回动作列表">← <span>动作列表</span></button><span class="step-label">03 / 视频分析</span></div>
     <section class="intro">
       <div>
         <p class="eyebrow">参考动作 / 学员动作</p>
@@ -28,7 +66,7 @@
     <section class="workspace-panel" aria-labelledby="input-title">
       <div class="section-head">
         <div><p class="eyebrow">输入</p><h2 id="input-title">选择两段视频</h2></div>
-        <span class="format-note">MP4 · 本机上传</span>
+        <span class="format-note">MP4 · 视频上传</span>
       </div>
       <form id="analysis-form">
         <div class="upload-grid">
@@ -48,7 +86,7 @@
           </label>
         </div>
         <div class="form-actions">
-          <p class="privacy-note">视频和分析结果保存在当前电脑的 MotionDiff 项目目录。</p>
+          <p class="privacy-note">视频和分析结果保存在当前服务的 MotionDiff 存储目录。</p>
           <button class="primary-button" id="analyze-button" type="submit">开始分析 <span aria-hidden="true">→</span></button>
         </div>
       </form>
@@ -90,6 +128,7 @@
         <article class="report-section"><div class="section-head compact"><div><p class="eyebrow">动作进度</p><h3>各阶段位置差</h3></div></div><div class="table-wrap"><table><thead><tr><th>阶段</th><th>最大差异部位</th><th>平均差</th></tr></thead><tbody id="phase-table"></tbody></table></div></article>
       </div>
       <div class="limitations" id="limitations"></div>
+    </section>
     </section>
   </main>
   <footer>MotionDiff · MediaPipe Pose Landmarker · 当前结果用于探索性比较</footer>

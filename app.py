@@ -21,9 +21,25 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
-RUNS_DIR = ROOT / "analysis" / "app_runs"
-MODEL_PATH = ROOT / "models" / "mediapipe" / "pose_landmarker_full.task"
-MAX_UPLOAD_BYTES = 512 * 1024 * 1024
+
+
+def env_int(name: str, default: int) -> int:
+    """Read a positive integer environment setting without hiding bad values."""
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    value = int(raw)
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+RUNS_DIR = Path(os.environ.get("MOTIONDIFF_RUNS_DIR", str(ROOT / "analysis" / "app_runs")))
+MODEL_PATH = Path(os.environ.get(
+    "MOTIONDIFF_MODEL_PATH",
+    str(ROOT / "models" / "mediapipe" / "pose_landmarker_full.task"),
+))
+MAX_UPLOAD_BYTES = env_int("MOTIONDIFF_MAX_UPLOAD_BYTES", 512 * 1024 * 1024)
 RUN_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -175,6 +191,9 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = unquote(urlparse(self.path).path)
+        if path == "/healthz":
+            self._json(HTTPStatus.OK, {"status": "ok"})
+            return
         if path == "/" or path == "/index.html":
             self._serve_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
             return
@@ -263,8 +282,15 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("MOTIONDIFF_HOST", "127.0.0.1"),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=env_int("MOTIONDIFF_PORT", env_int("PORT", 8765)),
+    )
     args = parser.parse_args()
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((args.host, args.port), MotionDiffHandler)

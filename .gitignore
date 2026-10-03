@@ -1,6 +1,7 @@
 videos
 .venv-mediapipe/
 .cache/
+/archive/
 models/mediapipe/
 __pycache__/
 *.pyc
@@ -9,3 +10,7 @@ __pycache__/
 /analysis/app_runs/
 /analysis/results/
 /reports/
+docs/.obsidian/app.json
+docs/.obsidian/appearance.json
+docs/.obsidian/core-plugins.json
+docs/.obsidian/workspace.json

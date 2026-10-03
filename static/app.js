@@ -1,3 +1,37 @@
+const ACTION_CATALOG = [
+  {
+    id: 'strength',
+    name: '力量 / 体能基础',
+    shortName: '力量与体能',
+    description: '建立全身力量与基础动作控制。',
+    tone: 'teal',
+    actions: [
+      { id: 'squat', name: '深蹲', description: '比较下肢轨迹与身体控制', available: true },
+      { id: 'lunge', name: '弓步蹲' },
+      { id: 'push-up', name: '俯卧撑' },
+      { id: 'plank', name: '平板支撑' },
+      { id: 'pull-up', name: '引体向上' },
+      { id: 'deadlift', name: '硬拉姿势' },
+    ],
+  },
+  {
+    id: 'football', name: '足球', description: '从脚下触球到完整射门动作。', tone: 'green',
+    actions: [{ id: 'shooting', name: '射门', detail: '正脚背 / 内脚背' }, { id: 'passing', name: '传球' }, { id: 'juggling', name: '颠球' }, { id: 'free-kick', name: '任意球' }],
+  },
+  {
+    id: 'basketball', name: '篮球', description: '拆解投篮、上篮与控球基础。', tone: 'orange',
+    actions: [{ id: 'shooting-free-throw', name: '投篮 / 罚球' }, { id: 'layup', name: '上篮' }, { id: 'stationary-dribble', name: '原地运球' }],
+  },
+  {
+    id: 'school-sports', name: '中考体育全套', description: '覆盖常见中考体育项目的动作准备。', tone: 'blue',
+    actions: [{ id: 'standing-long-jump', name: '立定跳远' }, { id: 'medicine-ball', name: '实心球' }, { id: 'jump-rope', name: '跳绳' }, { id: 'sit-up', name: '仰卧起坐' }, { id: 'volleyball-pass', name: '排球垫球' }, { id: 'running', name: '跑姿' }],
+  },
+  {
+    id: 'racket', name: '挥拍基础', description: '羽毛球、乒乓球和网球的挥拍动作。', tone: 'purple',
+    actions: [{ id: 'badminton-clear', name: '羽毛球高远球' }, { id: 'table-tennis-forehand', name: '乒乓正手攻球' }, { id: 'tennis-serve', name: '网球发球' }],
+  },
+];
+
 const form = document.querySelector('#analysis-form');
 const statusPanel = document.querySelector('#status-panel');
 const statusLabel = document.querySelector('#status-label');
@@ -7,6 +41,95 @@ const statusMessage = document.querySelector('#status-message');
 const results = document.querySelector('#results');
 const analyzeButton = document.querySelector('#analyze-button');
 let activeRun = null;
+
+const views = {
+  catalog: document.querySelector('#catalog-view'),
+  actions: document.querySelector('#action-view'),
+  coming: document.querySelector('#coming-view'),
+  analysis: document.querySelector('#analysis-view'),
+};
+let selectedCategory = ACTION_CATALOG[0];
+
+function findCategory(categoryId) {
+  return ACTION_CATALOG.find((category) => category.id === categoryId) || ACTION_CATALOG[0];
+}
+
+function showView(name) {
+  Object.entries(views).forEach(([key, view]) => { view.hidden = key !== name; });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderCategoryCards() {
+  document.querySelector('#category-grid').innerHTML = ACTION_CATALOG.map((category, index) => `
+    <button class="category-card ${category.tone}" type="button" data-category-id="${category.id}">
+      <span class="card-index">0${index + 1}</span>
+      <span class="category-name">${category.name}</span>
+      <span class="category-description">${category.description}</span>
+      <span class="category-footer"><span>${category.actions.length} 个动作</span><span class="card-arrow" aria-hidden="true">↗</span></span>
+    </button>`).join('');
+  document.querySelectorAll('[data-category-id]').forEach((button) => {
+    button.addEventListener('click', () => { window.location.hash = `actions/${button.dataset.categoryId}`; });
+  });
+}
+
+function renderActionCards(category) {
+  selectedCategory = category;
+  document.querySelector('#action-eyebrow').textContent = category.name;
+  document.querySelector('#action-title').textContent = `${category.shortName || category.name}动作`;
+  document.querySelector('#action-count').textContent = String(category.actions.length).padStart(2, '0');
+  document.querySelector('#action-grid').innerHTML = category.actions.map((action, index) => `
+    <button class="action-card ${action.available ? 'available' : ''}" type="button" data-action-id="${action.id}">
+      <span class="action-number">${String(index + 1).padStart(2, '0')}</span>
+      <span class="action-name">${action.name}</span>
+      <span class="action-detail">${action.description || action.detail || '动作分析功能正在准备中'}</span>
+      <span class="action-status">${action.available ? '进入视频分析 ↗' : '敬请期待 · 正在开发'}</span>
+    </button>`).join('');
+  document.querySelectorAll('[data-action-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = category.actions.find((item) => item.id === button.dataset.actionId);
+      window.location.hash = action.available ? `analyze/${category.id}/${action.id}` : `coming/${category.id}/${action.id}`;
+    });
+  });
+}
+
+function findAction(category, actionId) {
+  return category.actions.find((action) => action.id === actionId) || category.actions[0];
+}
+
+function routeFromHash() {
+  const parts = window.location.hash.replace(/^#/, '').split('/').filter(Boolean);
+  if (parts[0] === 'actions') {
+    const category = findCategory(parts[1]);
+    renderActionCards(category);
+    showView('actions');
+    return;
+  }
+  if (parts[0] === 'coming') {
+    const category = findCategory(parts[1]);
+    const action = findAction(category, parts[2]);
+    selectedCategory = category;
+    document.querySelector('#coming-category').textContent = category.name;
+    document.querySelector('#coming-title').textContent = `${action.name}正在开发`;
+    document.querySelector('#coming-description').textContent = `我们正在为${action.name}准备采集规范、姿态指标和对比报告，敬请期待。`;
+    showView('coming');
+    return;
+  }
+  if (parts[0] === 'analyze') {
+    const category = findCategory(parts[1]);
+    const action = findAction(category, parts[2]);
+    if (!action.available) {
+      window.location.hash = `coming/${category.id}/${action.id}`;
+      return;
+    }
+    renderActionCards(category);
+    showView('analysis');
+    return;
+  }
+  showView('catalog');
+}
+
+renderCategoryCards();
+window.addEventListener('hashchange', routeFromHash);
 
 function bindFileName(inputId, outputId) {
   document.querySelector(`#${inputId}`).addEventListener('change', (event) => {
@@ -172,3 +295,12 @@ document.querySelector('#new-analysis').addEventListener('click', () => {
   document.querySelector('#student-name').textContent = '选择视频文件';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+document.querySelector('#back-to-catalog').addEventListener('click', () => { window.location.hash = 'library'; });
+document.querySelector('#back-to-actions').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
+document.querySelector('#back-to-catalog-from-coming').addEventListener('click', () => { window.location.hash = 'library'; });
+document.querySelector('#coming-back-action').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
+document.querySelector('#coming-back-library').addEventListener('click', () => { window.location.hash = 'library'; });
+document.querySelector('#back-to-actions-from-analysis').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
+
+routeFromHash();
