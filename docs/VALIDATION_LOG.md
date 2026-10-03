@@ -1,11 +1,13 @@
 # MotionDiff 验证记录
 
-## 2026-10-04：一次性任务清理（本地待发布）
+## 2026-10-04：一次性任务清理（已发布）
 
-- 开发分支 `feature/ephemeral-runs`；线上服务尚未切换，仍使用持久目录 `/var/lib/motiondiff/runs`。
+- 开发分支 `feature/ephemeral-runs`，线上运行提交 `313a3cd788548c93b19d9c9b37b8e79545cc1133`；`main` 未合并。线上任务目录已切换到 `/dev/shm/motiondiff-runs`（tmpfs，权限 `700`）。
 - 本地 `python -m unittest discover -s tools/tests -v` 35 项通过，包括完成任务删除后视频、报告和状态 URL 返回 404、空闲 TTL 删除、运行中请求删除后的收尾清理。
 - `node --check static/app.js`、`python -m py_compile app.py`、`git diff --check` 通过。
-- 部署模板在 `/dev/shm` 下创建权限 700 的任务目录，应用启动时核验 Linux 目录确实位于 tmpfs；线上 unit 和 Nginx 尚未安装或重载。浏览器刷新清理和公网完整分析仍待发布后验证。
+- 线上已安装 systemd 模板并重启 MotionDiff；Nginx 已配置 `proxy_buffering off`，`nginx -t` 通过并已 reload。公网 `/healthz` 返回 200。
+- 公网使用 `videos/test5/test5-teacher.mp4` 和 `test5-student.mp4` 完成真实分析，任务 `dc522328eafe4ae5ae5e5aff8e3fe598`：本地比较和 AI 建议均 `complete`，耗时约 46 秒；报告返回 200，参考视频 Range 请求返回 206。调用删除接口后，状态、报告和视频 URL 均返回 404，tmpfs 任务目录消失。旧持久目录保持约 6.5 MiB，未因本次分析增长。
+- 浏览器刷新触发清理的前端路径已实现，但本轮未对真实浏览器执行刷新测试；服务端删除接口和异常退出 TTL 已验证。
 
 ## 2026-10-04：VPS 首次部署验证
 

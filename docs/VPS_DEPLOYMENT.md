@@ -5,18 +5,18 @@
 ## 已上线实例：2026-10-04
 
 - 地址：<https://motiondiff.maki3991.xyz/#analyze/strength/squat>，HTTP 自动跳转 HTTPS。
-- 发布来源：GitHub `main`，提交 `1652a76d045912ad1b5feadab89828b847f4eace`。本地尚未提交的一次性结果清理改动不在本次发布内；下文相关设计不表示线上已经启用。
+- 发布来源：GitHub `feature/ephemeral-runs`，线上代码提交 `313a3cd788548c93b19d9c9b37b8e79545cc1133`；`main` 仍保留之前的 `1652a76d045912ad1b5feadab89828b847f4eace`。
 - 北京 ECS：`i-2zef1pphzxbat7xkfbxt`；Ubuntu 24.04、2 vCPU、约 1.6 GiB RAM。代码 `/opt/motiondiff`，虚拟环境 `/opt/motiondiff/.venv`，独立用户及服务 `motiondiff` / `motiondiff.service`。
 - 后端仅监听 `127.0.0.1:8765`；Nginx 配置 `/etc/nginx/sites-available/motiondiff.maki3991.xyz`。现有 study 的目录、站点配置、systemd 配置和证书均未修改，服务未停止或重启。
 - API 配置通过 `/etc/motiondiff/ai.env` 注入，权限 `600`，目录权限 `700`；密钥未进入仓库或静态资源。
-- 当前线上结果目录是持久磁盘 `/var/lib/motiondiff/runs`，暂未启用自动清理。任务查询状态仍在进程内存中，服务重启后无法恢复状态；长期运行需发布清理功能或安排磁盘清理。
+- 当前线上结果目录是 tmpfs `/dev/shm/motiondiff-runs`。页面离开或刷新会请求删除整次任务；异常退出由默认 30 分钟空闲 TTL 兜底，服务重启时清理残留任务目录。旧持久目录 `/var/lib/motiondiff/runs` 仍有约 6.5 MiB 历史数据，尚未删除，但不再接收新任务。
 - 系统依赖含 `python3-venv libgl1 libegl1 libgles2`。仅导入 MediaPipe 不能验证运行库完整；已实际创建 PoseLandmarker 并处理视频。
 - 为给 study 留出资源，MotionDiff 使用 `CPUQuota=100%`、`MemoryHigh=750M`、`MemoryMax=900M`，`OMP_NUM_THREADS=1`、`OPENBLAS_NUM_THREADS=1`，对齐预算 `MOTIONDIFF_MAX_ALIGNMENT_CELLS=810000`。建议每段 5～15 秒、一次深蹲；60 秒只是时长上限，两段帧数乘积超过预算仍会拒绝。
 - Nginx 已启用每 IP 平均每分钟 3 次上传、有限突发、最多 2 条上传连接；后端同时只处理一组视频，每段上限 50 MiB / 60 秒。
 - Let's Encrypt 证书已签发，`certbot.timer` 活跃；续期钩子 `/etc/letsencrypt/renewal-hooks/deploy/motiondiff-nginx.sh` 在 `nginx -t` 通过后平滑 reload。
 - 公网真实任务 `c0c6624d529b42cd8bf52af0f45c282b`：99 / 171 帧，44.77 秒，报告和 AI 建议均 `complete`；手机及桌面浏览器已验证报告和两段视频，详见 [VALIDATION_LOG.md](VALIDATION_LOG.md)。这是一次链路验证，不代表 AI 建议已通过教练验收或所有网络均稳定。
 
-仓库中的 [deploy/motiondiff.service](../deploy/motiondiff.service) 是启用一次性任务目录的 systemd 模板。当前线上 unit 仍是旧配置，只有安装该模板并重启服务后，线上才会改用 `/dev/shm`。
+仓库中的 [deploy/motiondiff.service](../deploy/motiondiff.service) 已安装为线上 unit。MotionDiff 专属旧 unit 和 Nginx 配置备份在 `/root/motiondiff-pre-ephemeral-20261004/`；Nginx 已配置 `proxy_buffering off`。
 
 日常只读检查：
 
