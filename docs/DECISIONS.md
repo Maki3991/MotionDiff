@@ -1,5 +1,6 @@
 # Decisions and Open Questions
 
+- 2026-10-04: Web 分析任务改为一次性结果。上传视频、逐帧姿态 JSON 和 Markdown/JSON 报告只在运行期间写入临时目录；Linux 正式部署要求 tmpfs。刷新、离开或重新分析时请求删除整次任务，异常退出由空闲 TTL 兜底。浏览器只暂存随机任务 ID 用于刷新后补发清理请求，不恢复报告。此前 D-008 的“保留”仅指任务存活期间，不代表长期留存。
 - 2026-10-03: Adopt the completed AI-feedback scope from `AI_FEEDBACK_DECISIONS.md`: current action is one complete side-view squat; the selected reference is the target; evidence dimensions are knee trajectory, depth and trunk inclination; send derived metrics plus limited evidence screenshots; return zero to three evidence-linked suggestions; keep all generic findings, metrics, videos and Markdown. AI suggestions are pending human review and must degrade to the local report on provider failure.
 - 2026-10-03 historical correction: The earlier fixed two-item squat web feedback, offline rule implementation and report truncation were withdrawn. The current implementation supersedes that temporary state with backend AI output while retaining the video URL and HTTP Range fixes.
 

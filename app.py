@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import socket
 import sys
 import threading
@@ -38,7 +39,9 @@ def env_int(name: str, default: int) -> int:
     return value
 
 
-RUNS_DIR = Path(os.environ.get("MOTIONDIFF_RUNS_DIR", str(ROOT / "analysis" / "app_runs")))
+DEFAULT_RUNS_DIR = Path("/dev/shm/motiondiff-runs") if Path("/dev/shm").is_dir() else ROOT / ".runtime" / "app_runs"
+RUNS_DIR = Path(os.environ.get("MOTIONDIFF_RUNS_DIR", str(DEFAULT_RUNS_DIR)))
+RUN_IDLE_TTL_SECONDS = env_int("MOTIONDIFF_RUN_IDLE_TTL_SECONDS", 30 * 60)
 MODEL_PATH = Path(os.environ.get(
     "MOTIONDIFF_MODEL_PATH",
     str(ROOT / "models" / "mediapipe" / "pose_landmarker_full.task"),
@@ -52,10 +55,51 @@ RUN_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 
 class JobStore:
-    def __init__(self) -> None:
+    def __init__(self, runs_dir: Path = RUNS_DIR) -> None:
+        self.runs_dir = runs_dir
         self._lock = threading.Lock()
         self._jobs: dict[str, dict] = {}
+        self._running: set[str] = set()
+        self._delete_requested: set[str] = set()
         self._slot = threading.BoundedSemaphore(1)
+
+    def touch(self, run_id: str) -> bool:
+        with self._lock:
+            if run_id in self._jobs:
+                self._jobs[run_id]["last_accessed_at"] = time.time()
+                return True
+        return False
+
+    def delete(self, run_id: str) -> None:
+        with self._lock:
+            running = run_id in self._running
+            if running:
+                self._delete_requested.add(run_id)
+            self._jobs.pop(run_id, None)
+        if not running:
+            shutil.rmtree(self.runs_dir / run_id, ignore_errors=True)
+
+    def cleanup_expired(self, now: float | None = None) -> None:
+        current = time.time() if now is None else now
+        expired: list[str] = []
+        with self._lock:
+            for run_id, job in self._jobs.items():
+                last_access = job.get("last_accessed_at", job["created_at"])
+                if current - last_access >= RUN_IDLE_TTL_SECONDS:
+                    expired.append(run_id)
+            for run_id in expired:
+                if run_id in self._running:
+                    self._delete_requested.add(run_id)
+                self._jobs.pop(run_id, None)
+        for run_id in expired:
+            with self._lock:
+                running = run_id in self._running
+            if not running:
+                shutil.rmtree(self.runs_dir / run_id, ignore_errors=True)
+
+    def is_delete_requested(self, run_id: str) -> bool:
+        with self._lock:
+            return run_id in self._delete_requested
 
     def reserve(self) -> bool:
         return self._slot.acquire(blocking=False)
@@ -72,6 +116,7 @@ class JobStore:
                 "message": "等待分析", "error": None, "result": None,
                 "created_at": time.time(),
             }
+            self._running.add(run_id)
         thread = threading.Thread(
             target=self._run, args=(run_id, reference, student, reference_name, student_name, action),
             daemon=True,
@@ -81,6 +126,7 @@ class JobStore:
         except Exception:
             with self._lock:
                 self._jobs.pop(run_id, None)
+                self._running.discard(run_id)
             raise
         return run_id
 
@@ -97,8 +143,10 @@ class JobStore:
     def _run(self, run_id: str, reference: bytes, student: bytes,
               reference_name: str, student_name: str, action: str = "generic") -> None:
         started = time.perf_counter()
-        run_dir = RUNS_DIR / run_id
+        run_dir = self.runs_dir / run_id
         try:
+            if self.is_delete_requested(run_id):
+                return
             self.update(run_id, status="processing", progress=3, message="保存视频")
             input_dir = run_dir / "input"
             reference_dir = run_dir / "pose" / "reference"
@@ -152,6 +200,8 @@ class JobStore:
                 ("reference", reference_path, reference_dir, 12),
                 ("student", student_path, student_dir, 42),
             ):
+                if self.is_delete_requested(run_id):
+                    return
                 self.update(run_id, progress=progress, message=f"MediaPipe 逐帧处理 {label}")
                 args = SimpleNamespace(video=video_path, model=MODEL_PATH,
                                        output_dir=output_dir, running_mode="VIDEO",
@@ -159,6 +209,8 @@ class JobStore:
                                        max_frames=MAX_VIDEO_FRAMES)
                 export_summaries[label] = export_video(args, mp, cv2)
 
+            if self.is_delete_requested(run_id):
+                return
             self.update(run_id, progress=78, message="对齐动作序列并计算差异")
             reference_sequence = load_sequence(reference_dir)
             student_sequence = load_sequence(student_dir)
@@ -173,6 +225,8 @@ class JobStore:
                 except Exception:
                     evidence = {"status": "insufficient_data", "reasons": ["深蹲证据提取失败，本地比较报告已保留。"]}
                 result["squat_evidence"] = evidence
+                if self.is_delete_requested(run_id):
+                    return
                 self.update(run_id, progress=90, message="正在检查深蹲证据并生成 AI 建议")
                 try:
                     config = AIConfig.from_env()
@@ -186,6 +240,8 @@ class JobStore:
             else:
                 result["ai_feedback"] = {"status": "unsupported", "message": "本次为通用比较，AI 建议目前仅支持侧面单次深蹲。"}
             top_finding = (result.get("findings") or [None])[0]
+            if self.is_delete_requested(run_id):
+                return
             if top_finding:
                 result["visualization"] = {
                     "reference": f"/runs/{run_id}/pose/reference/{top_finding['peak_reference_frame_index']}",
@@ -216,10 +272,44 @@ class JobStore:
             self.update(run_id, status="failed", progress=100,
                         message="分析失败", error=f"{type(exc).__name__}: {exc}")
         finally:
+            with self._lock:
+                self._running.discard(run_id)
+                deleted = run_id in self._delete_requested
+                self._delete_requested.discard(run_id)
+            if deleted:
+                shutil.rmtree(run_dir, ignore_errors=True)
             self.release()
 
 
-STORE = JobStore()
+STORE = JobStore(RUNS_DIR)
+
+
+def cleanup_loop() -> None:
+    while True:
+        time.sleep(min(60, RUN_IDLE_TTL_SECONDS))
+        STORE.cleanup_expired()
+
+
+def clear_orphaned_runs_on_start() -> None:
+    """Remove only old app-created run directories after a process restart."""
+    for child in RUNS_DIR.iterdir():
+        if child.is_dir() and RUN_ID_RE.fullmatch(child.name):
+            shutil.rmtree(child, ignore_errors=True)
+
+
+def validate_runs_dir() -> None:
+    if not sys.platform.startswith("linux"):
+        return
+    directory = RUNS_DIR.resolve()
+    mounts = []
+    for line in Path("/proc/mounts").read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            mount = Path(parts[1])
+            if mount == directory or mount in directory.parents:
+                mounts.append((len(mount.parts), parts[2]))
+    if not mounts or max(mounts)[1] != "tmpfs":
+        raise RuntimeError("MOTIONDIFF_RUNS_DIR must be on tmpfs on Linux")
 
 
 def json_bytes(payload: object) -> bytes:
@@ -289,16 +379,25 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
         pose_match = re.match(r"^/runs/([a-f0-9]{32})/pose/(reference|student)/(\d+)$", path)
         if run_match:
             run_id, category, filename = run_match.groups()
-            self._serve_file(RUNS_DIR / run_id / category / f"{filename}.mp4", "video/mp4")
+            if not STORE.touch(run_id):
+                self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+                return
+            self._serve_file(STORE.runs_dir / run_id / category / f"{filename}.mp4", "video/mp4")
             return
         if report_match:
             run_id, filename = report_match.groups()
+            if not STORE.touch(run_id):
+                self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+                return
             content_type = "application/json; charset=utf-8" if filename.endswith(".json") else "text/markdown; charset=utf-8"
-            self._serve_file(RUNS_DIR / run_id / "report" / filename, content_type)
+            self._serve_file(STORE.runs_dir / run_id / "report" / filename, content_type)
             return
         if pose_match:
             run_id, side, frame = pose_match.groups()
-            pose_dir = RUNS_DIR / run_id / "pose" / side
+            if not STORE.touch(run_id):
+                self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+                return
+            pose_dir = STORE.runs_dir / run_id / "pose" / side
             files = sorted(pose_dir.glob(f"*_{int(frame):012d}_keypoints.json"))
             if files:
                 self._serve_file(files[0], "application/json; charset=utf-8")
@@ -307,7 +406,8 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
             return
         status_match = re.match(r"^/api/status/([a-f0-9]{32})$", path)
         if status_match:
-            job = STORE.get(status_match.group(1))
+            run_id = status_match.group(1)
+            job = STORE.get(run_id) if STORE.touch(run_id) else None
             if not job:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
             else:
@@ -317,6 +417,11 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = unquote(urlparse(self.path).path)
+        delete_match = re.fullmatch(r"/api/runs/([a-f0-9]{32})/delete", path)
+        if delete_match:
+            STORE.delete(delete_match.group(1))
+            self._json(HTTPStatus.OK, {"status": "deleted"})
+            return
         if path != "/api/analyze":
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
@@ -387,7 +492,7 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
     def _serve_file(self, path: Path, content_type: str) -> None:
         try:
             resolved = path.resolve()
-            allowed = (STATIC_DIR.resolve(), RUNS_DIR.resolve())
+            allowed = (STATIC_DIR.resolve(), STORE.runs_dir.resolve())
             if not any(resolved == root or root in resolved.parents for root in allowed):
                 raise FileNotFoundError
             body = resolved.read_bytes()
@@ -456,8 +561,13 @@ def main() -> int:
         default=env_int("MOTIONDIFF_PORT", env_int("PORT", 8765)),
     )
     args = parser.parse_args()
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    validate_runs_dir()
     server = MotionDiffServer((args.host, args.port), MotionDiffHandler)
+    RUNS_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if sys.platform.startswith("linux"):
+        RUNS_DIR.chmod(0o700)
+    clear_orphaned_runs_on_start()
+    threading.Thread(target=cleanup_loop, name="run-cleanup", daemon=True).start()
     print(f"MotionDiff running at http://{args.host}:{args.port}")
     try:
         config = AIConfig.from_env()
