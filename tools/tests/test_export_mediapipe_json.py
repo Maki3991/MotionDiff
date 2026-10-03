@@ -98,6 +98,22 @@ class ExportIntegrityTests(unittest.TestCase):
         self.assertEqual(detector.timestamps, [0, 33, 67])
         self.assertTrue(capture.released and detector.closed)
 
+    def test_runtime_duration_guard_stops_before_extra_inference(self):
+        self.args.max_duration_seconds = 0.05
+        mp, cv2, capture, detector = fake_libraries()
+        with self.assertRaisesRegex(ValueError, '0.05'):
+            exporter.export_video(self.args, mp, cv2)
+        self.assertEqual(detector.timestamps, [0, 33])
+        self.assertTrue(capture.released and detector.closed)
+
+    def test_runtime_frame_guard_ignores_underreported_metadata(self):
+        self.args.max_frames = 2
+        mp, cv2, capture, detector = fake_libraries(advertised=2)
+        with self.assertRaises(ValueError):
+            exporter.export_video(self.args, mp, cv2)
+        self.assertEqual(detector.timestamps, [0, 33])
+        self.assertTrue(capture.released and detector.closed)
+
     def test_image_mode_still_processes_every_frame(self):
         self.args.running_mode = "IMAGE"
         mp, cv2, _, detector = fake_libraries()

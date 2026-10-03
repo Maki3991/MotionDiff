@@ -39,7 +39,11 @@ MODEL_PATH = Path(os.environ.get(
     "MOTIONDIFF_MODEL_PATH",
     str(ROOT / "models" / "mediapipe" / "pose_landmarker_full.task"),
 ))
-MAX_UPLOAD_BYTES = env_int("MOTIONDIFF_MAX_UPLOAD_BYTES", 512 * 1024 * 1024)
+MAX_UPLOAD_BYTES = env_int("MOTIONDIFF_MAX_UPLOAD_BYTES", 101 * 1024 * 1024)
+MAX_VIDEO_BYTES = env_int("MOTIONDIFF_MAX_VIDEO_BYTES", 50 * 1024 * 1024)
+MAX_VIDEO_SECONDS = env_int("MOTIONDIFF_MAX_VIDEO_SECONDS", 60)
+MAX_VIDEO_FRAMES = env_int("MOTIONDIFF_MAX_VIDEO_FRAMES", 3600)
+MAX_ALIGNMENT_CELLS = env_int("MOTIONDIFF_MAX_ALIGNMENT_CELLS", 1800 * 1800)
 RUN_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -47,6 +51,13 @@ class JobStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._jobs: dict[str, dict] = {}
+        self._slot = threading.BoundedSemaphore(1)
+
+    def reserve(self) -> bool:
+        return self._slot.acquire(blocking=False)
+
+    def release(self) -> None:
+        self._slot.release()
 
     def create(self, reference: bytes, student: bytes, reference_name: str,
                student_name: str) -> str:
@@ -61,7 +72,12 @@ class JobStore:
             target=self._run, args=(run_id, reference, student, reference_name, student_name),
             daemon=True,
         )
-        thread.start()
+        try:
+            thread.start()
+        except Exception:
+            with self._lock:
+                self._jobs.pop(run_id, None)
+            raise
         return run_id
 
     def update(self, run_id: str, **values: object) -> None:
@@ -94,11 +110,31 @@ class JobStore:
                            ensure_ascii=False, indent=2), encoding="utf-8"
             )
 
+            self.update(run_id, progress=5, message="检查两段视频的时长")
+            import cv2
+            from tools.video_limits import inspect_video
+            try:
+                checked = {}
+                for label, path in (("参考", reference_path), ("学员", student_path)):
+                    try:
+                        checked[label] = inspect_video(
+                            path, cv2, max_duration_seconds=MAX_VIDEO_SECONDS,
+                            max_frames=MAX_VIDEO_FRAMES,
+                        )
+                    except ValueError as exc:
+                        raise ValueError(f"{label}视频：{exc}") from exc
+                if checked["参考"]["frames"] * checked["学员"]["frames"] > MAX_ALIGNMENT_CELLS:
+                    raise ValueError("两段视频的总比较帧数过多，请剪短视频或降低帧率后重试。")
+            except ValueError:
+                # Rejected uploads must not accumulate large source files on disk.
+                for path in (reference_path, student_path, input_dir / "source_names.json"):
+                    path.unlink(missing_ok=True)
+                raise
+
             self.update(run_id, progress=8, message="加载 MediaPipe")
             if not MODEL_PATH.is_file():
                 raise RuntimeError(f"MediaPipe 模型不存在：{MODEL_PATH}")
             try:
-                import cv2
                 import mediapipe as mp
             except ImportError as exc:
                 raise RuntimeError(
@@ -114,11 +150,17 @@ class JobStore:
             ):
                 self.update(run_id, progress=progress, message=f"MediaPipe 逐帧处理 {label}")
                 args = SimpleNamespace(video=video_path, model=MODEL_PATH,
-                                       output_dir=output_dir, running_mode="VIDEO")
+                                       output_dir=output_dir, running_mode="VIDEO",
+                                       max_duration_seconds=MAX_VIDEO_SECONDS,
+                                       max_frames=MAX_VIDEO_FRAMES)
                 export_summaries[label] = export_video(args, mp, cv2)
 
             self.update(run_id, progress=78, message="对齐动作序列并计算差异")
-            result = compare(load_sequence(reference_dir), load_sequence(student_dir))
+            reference_sequence = load_sequence(reference_dir)
+            student_sequence = load_sequence(student_dir)
+            if len(reference_sequence["frames"]) * len(student_sequence["frames"]) > MAX_ALIGNMENT_CELLS:
+                raise ValueError("实际视频帧数超过比较预算，请剪短视频或降低帧率。")
+            result = compare(reference_sequence, student_sequence)
             top_finding = (result.get("findings") or [None])[0]
             if top_finding:
                 result["visualization"] = {
@@ -149,6 +191,8 @@ class JobStore:
         except Exception as exc:
             self.update(run_id, status="failed", progress=100,
                         message="分析失败", error=f"{type(exc).__name__}: {exc}")
+        finally:
+            self.release()
 
 
 STORE = JobStore()
@@ -183,6 +227,8 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -193,6 +239,13 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path)
         if path == "/healthz":
             self._json(HTTPStatus.OK, {"status": "ok"})
+            return
+        if path == "/api/limits":
+            self._json(HTTPStatus.OK, {
+                "max_video_seconds": MAX_VIDEO_SECONDS,
+                "max_video_bytes": MAX_VIDEO_BYTES,
+                "max_upload_bytes": MAX_UPLOAD_BYTES,
+            })
             return
         if path == "/" or path == "/index.html":
             self._serve_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
@@ -210,7 +263,7 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
         pose_match = re.match(r"^/runs/([a-f0-9]{32})/pose/(reference|student)/(\d+)$", path)
         if run_match:
             run_id, category, filename = run_match.groups()
-            self._serve_file(RUNS_DIR / run_id / category / filename, "video/mp4")
+            self._serve_file(RUNS_DIR / run_id / category / f"{filename}.mp4", "video/mp4")
             return
         if report_match:
             run_id, filename = report_match.groups()
@@ -247,21 +300,59 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "无效的请求长度"})
             return
         if length <= 0 or length > MAX_UPLOAD_BYTES:
+            self.close_connection = True
             self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "上传内容过大或为空"})
             return
-        body = self.rfile.read(length)
+        if not STORE.reserve():
+            self.close_connection = True
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "服务器正在处理其他视频，请稍后再试。"})
+            return
+        submitted = False
         try:
-            files = parse_upload(body, self.headers.get("Content-Type", ""))
-            reference_name, reference = files["reference"]
-            student_name, student = files["student"]
-        except (KeyError, ValueError, TypeError) as exc:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": f"需要 reference 和 student 两个视频：{exc}"})
-            return
-        if not reference or not student:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "两个视频都不能为空"})
-            return
-        run_id = STORE.create(reference, student, reference_name, student_name)
-        self._json(HTTPStatus.ACCEPTED, {"run_id": run_id, "status": "queued"})
+            # A hard deadline also bounds a client that keeps sending tiny chunks.
+            deadline = time.monotonic() + 120
+            chunks = []
+            received = 0
+            while received < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("upload deadline exceeded")
+                self.connection.settimeout(min(30, remaining))
+                chunk = self.rfile.read1(min(1024 * 1024, length - received))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                received += len(chunk)
+            body = b"".join(chunks)
+            chunks.clear()
+            if len(body) != length:
+                self.close_connection = True
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "视频上传不完整，请重试。"})
+                return
+            try:
+                files = parse_upload(body, self.headers.get("Content-Type", ""))
+                reference_name, reference = files["reference"]
+                student_name, student = files["student"]
+            except (KeyError, ValueError, TypeError) as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": f"需要 reference 和 student 两个视频：{exc}"})
+                return
+            if not reference or not student:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "两个视频都不能为空"})
+                return
+            if max(len(reference), len(student)) > MAX_VIDEO_BYTES:
+                self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {
+                    "error": f"每个视频不能超过 {MAX_VIDEO_BYTES / 1024 / 1024:g} MB，请压缩后上传。",
+                })
+                return
+            run_id = STORE.create(reference, student, reference_name, student_name)
+            submitted = True
+            self._json(HTTPStatus.ACCEPTED, {"run_id": run_id, "status": "queued"})
+        except TimeoutError:
+            self.close_connection = True
+            self._json(HTTPStatus.REQUEST_TIMEOUT, {"error": "上传超时，请重试。"})
+        finally:
+            if not submitted:
+                STORE.release()
 
     def _serve_file(self, path: Path, content_type: str) -> None:
         try:
@@ -272,6 +363,39 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
             body = resolved.read_bytes()
         except (FileNotFoundError, OSError):
             self._json(HTTPStatus.NOT_FOUND, {"error": "file not found"})
+            return
+        if content_type == "video/mp4":
+            total = len(body)
+            start, end = 0, total - 1
+            range_header = self.headers.get("Range")
+            if range_header:
+                match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
+                if match and any(match.groups()):
+                    first, last = match.groups()
+                    if first:
+                        start = int(first)
+                        end = min(int(last), total - 1) if last else total - 1
+                    else:
+                        start = max(0, total - int(last))
+                        if int(last) == 0:
+                            start = total
+                else:
+                    start = total
+                if start >= total or end < start:
+                    self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    self.send_header("Content-Range", f"bytes */{total}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+            self.send_response(HTTPStatus.PARTIAL_CONTENT if range_header else HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Cache-Control", "no-store")
+            if range_header:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
+            self.end_headers()
+            self.wfile.write(body[start:end + 1])
             return
         self._send(HTTPStatus.OK, body, content_type)
 

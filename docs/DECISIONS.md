@@ -1,5 +1,7 @@
 # Decisions and Open Questions
 
+- 2026-10-03 correction: Withdraw the fixed two-item squat web feedback, offline rule implementation and report truncation. Restore all generic report data and Markdown sections; retain video URL and HTTP Range fixes. Place a generic student feedback section first in the results, reserved for future API-generated text under `comparison.student_feedback`. API integration is not implemented.
+
 - Last updated: 2026-10-02
 
 ## Settled by the team
@@ -23,6 +25,8 @@
 | D-015 | Show a joint finding only when its mean normalized position difference is at least 0.10 shoulder widths. | This temporary noise floor suppresses all findings in the one available same-person A/B repeat pair while retaining the deliberate raised-arm A/D case. It is based on a small sample and must be revisited after fresh-recording acceptance. |
 
 ## Current next-work sequence
+
+- 2026-10-03: Upload admission defaults to 60 seconds and 50 MiB per clip, 101 MiB per multipart request, and one active upload/analysis per process. Check both clips with OpenCV metadata before loading MediaPipe, and enforce actual duration/frame limits during extraction. Reject unknown duration. The existing quadratic DTW implementation also needs a 3,240,000 frame-pair budget (60 s at 30 FPS on both sides); longer high-FPS pairs may require trimming. These resource gates are not action recognition. Browser prechecks are usability only; server checks remain authoritative. Public Nginx rate limiting, authentication and retention cleanup remain deployment work.
 
 - 2026-10-02 conversation: make the current report useful and reviewable against real video evidence first. On existing `test2` clips, seven full-pair runs took 15.55–19.11 seconds, so an early-abort precheck is not yet needed solely to save time. This is the next-work order, not a claim that report quality has been validated. See [STATUS.md](STATUS.md).
 - Deferred TODO: evaluate camera/viewpoint comparability after full MediaPipe extraction, with a retry-or-continue warning if evidence supports it. Use labelled same-camera, moved-camera and deliberate-motion examples before choosing any threshold; the uncalibrated similarity index alone cannot identify camera error. Longer clips may change the runtime tradeoff.

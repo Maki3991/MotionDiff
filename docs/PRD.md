@@ -18,7 +18,7 @@ The initial implementation compares pre-trimmed clips of the standing side leg r
 4. The comparison module normalizes the two sequences, aligns their time progress and computes differences.
 5. The result view presents both videos, an exploratory similarity index, localized differences by joint and clip-progress phase, and controls that seek both videos to each difference's evidence timestamps.
 
-The capture and processing interaction is record-then-process for the initial demo. The maximum clip length and acceptable wait time remain TBD pending runtime benchmarking.
+The capture and processing interaction is record-then-process for the initial demo. Default upload admission is 60 seconds and 50 MiB per clip, with one active upload/analysis and a bounded frame-pair budget. Acceptable wait time remains TBD pending runtime benchmarking; admission does not validate long-sequence analysis.
 
 ## 4. Requirements
 

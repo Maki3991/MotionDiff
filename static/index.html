@@ -66,7 +66,7 @@
     <section class="workspace-panel" aria-labelledby="input-title">
       <div class="section-head">
         <div><p class="eyebrow">输入</p><h2 id="input-title">选择两段视频</h2></div>
-        <span class="format-note">MP4 · 视频上传</span>
+        <span class="format-note">建议每段 10–20 秒 · 默认最多 60 秒、50 MB</span>
       </div>
       <form id="analysis-form">
         <div class="upload-grid">
@@ -103,6 +103,11 @@
         <div><p class="eyebrow">分析报告</p><h2>参考动作与学员动作的差异</h2></div>
         <div class="result-actions"><a id="report-link" class="text-button" href="#" target="_blank">打开 Markdown 报告</a><button id="new-analysis" class="quiet-button" type="button">重新分析</button></div>
       </div>
+
+      <section class="student-feedback" id="student-feedback" aria-labelledby="student-feedback-title">
+        <div class="section-head compact"><h3 id="student-feedback-title">学员动作反馈</h3></div>
+        <div id="student-feedback-content">AI 反馈尚未接入。</div>
+      </section>
 
       <div class="judgement-note" id="judgement-note" hidden></div>
 

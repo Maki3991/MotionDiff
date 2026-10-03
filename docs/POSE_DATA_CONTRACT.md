@@ -29,6 +29,8 @@ The selected interface choice is to provide raw keypoints plus generic normalize
 - A monocular model's estimated z/world coordinates must not be described as calibrated ground-truth 3D.
 
 ## 4. Derived features and action-specific data
+
+- The generic web feedback container accepts optional text under `comparison.student_feedback`; no API currently produces this field. Fixed squat feedback rules have been withdrawn. Existing comparison metrics and the per-frame schema remain unchanged.
 - Joint angles, selected keypoint groups, movement phases, and coaching rules belong to the comparison/action layer unless a future engine adapter provides a clearly documented derived field.
 - Derived fields must identify the rule/version that produced them.
 - The extraction layer must not label an action as correct or incorrect.

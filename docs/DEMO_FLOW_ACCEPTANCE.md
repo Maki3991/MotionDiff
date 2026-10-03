@@ -45,7 +45,7 @@ A demo build is acceptable for the first prototype when:
 - The 75.4 similarity index on `test2` is uncalibrated and is not a pass/fail threshold.
 - Exact camera tolerance and semantic action-mismatch detection remain unsupported.
 - The following remain TBD:
-- maximum participant clip duration;
+- maximum participant clip duration is now 60 seconds by default (2026-10-03); accepted duration does not establish latency or long-sequence accuracy;
 - maximum acceptable processing time after recording;
 - how many localized differences to show.
 

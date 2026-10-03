@@ -167,6 +167,13 @@ function seekVideo(videoId, milliseconds) {
   video.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function renderStudentFeedback(feedback) {
+  const content = document.querySelector('#student-feedback-content');
+  content.textContent = typeof feedback === 'string' && feedback.trim()
+    ? feedback
+    : 'AI 反馈尚未接入。';
+}
+
 function renderResult(payload) {
   const report = payload.comparison;
   const summary = report.summary || {};
@@ -190,13 +197,14 @@ function renderResult(payload) {
   studentVideo.src = payload.video_urls.student;
   document.querySelector('#reference-video-name').textContent = '参考动作';
   document.querySelector('#student-video-name').textContent = '学员动作';
+  renderStudentFeedback(report.student_feedback);
   document.querySelector('#findings').innerHTML = (report.findings || []).map((item) => `
     <div class="finding">
       <div class="finding-title"><span class="finding-chip">${item.joint_label}</span><span>${item.direction}</span></div>
       <p>${item.message} 对齐覆盖 ${(item.coverage * 100).toFixed(0)}%，P90 差异 ${format(item.p90_delta, 3)} 个肩宽。</p>
       <button class="finding-seek" type="button" data-reference-ms="${item.peak_reference_timestamp_ms ?? ''}" data-student-ms="${item.peak_target_timestamp_ms ?? ''}">定位 A ${formatTime(item.peak_reference_timestamp_ms)} / B ${formatTime(item.peak_target_timestamp_ms)}</button>
     </div>`).join('') || '<p class="format-note">当前有效关键点不足，无法生成可解释差异。</p>';
-  document.querySelectorAll('.finding-seek').forEach((button) => {
+  document.querySelectorAll('#findings .finding-seek').forEach((button) => {
     button.addEventListener('click', () => {
       seekVideo('reference-video', button.dataset.referenceMs);
       seekVideo('student-video', button.dataset.studentMs);
@@ -262,6 +270,29 @@ async function poll(runId) {
   window.setTimeout(() => poll(runId), 700);
 }
 
+function readVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    const finish = (error, duration) => {
+      window.clearTimeout(timer);
+      video.onloadedmetadata = video.onerror = null;
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
+      error ? reject(error) : resolve(duration);
+    };
+    const timer = window.setTimeout(() => finish(new Error('读取视频时长超时，请重新导出视频后重试。')), 15000);
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      finish(Number.isFinite(duration) && duration > 0 ? null : new Error('无法读取视频时长，请重新导出视频后重试。'), duration);
+    };
+    video.onerror = () => finish(new Error('浏览器无法读取这个视频，请转换为 MP4 后重试。'));
+    video.src = url;
+  });
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const reference = document.querySelector('#reference-file').files[0];
@@ -270,11 +301,24 @@ form.addEventListener('submit', async (event) => {
   results.hidden = true;
   analyzeButton.disabled = true;
   analyzeButton.textContent = '处理中…';
-  setStatus('queued', 0, '正在上传两段视频');
+  setStatus('queued', 0, '正在检查两段视频');
   const data = new FormData();
   data.append('reference', reference);
   data.append('student', student);
   try {
+    const limitsResponse = await fetch('/api/limits');
+    if (!limitsResponse.ok) throw new Error('无法读取上传限制，请稍后重试。');
+    const limits = await limitsResponse.json();
+    for (const [label, file] of [['参考', reference], ['学员', student]]) {
+      if (file.size > limits.max_video_bytes) {
+        throw new Error(`${label}视频不能超过 ${(limits.max_video_bytes / 1024 / 1024).toFixed(0)} MB，请压缩后上传。`);
+      }
+      const duration = await readVideoDuration(file);
+      if (duration > limits.max_video_seconds) {
+        throw new Error(`${label}视频长 ${duration.toFixed(2)} 秒，最多允许 ${limits.max_video_seconds} 秒，请先剪短。`);
+      }
+    }
+    setStatus('queued', 0, '正在上传两段视频');
     const response = await fetch('/api/analyze', { method: 'POST', body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || '上传失败');

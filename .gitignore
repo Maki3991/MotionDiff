@@ -1,4 +1,7 @@
 videos
+.env
+.env.*
+!.env.example
 .venv-mediapipe/
 .cache/
 /archive/

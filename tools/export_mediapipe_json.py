@@ -206,10 +206,17 @@ def export_video(args: argparse.Namespace, mp: Any, cv2: Any,
             if not ok:
                 break
             frame_index = summary["decoded_frames"]
+            max_frames = getattr(args, "max_frames", None)
+            if max_frames is not None and frame_index >= max_frames:
+                raise ValueError(f"视频实际帧数超过 {max_frames} 帧，请剪短后重试。")
             summary["decoded_frames"] += 1
             height, width = bgr.shape[:2]
             timestamp_ms, inference_ms, timestamp_source = clock.next(
                 frame_index, float(cap.get(cv2.CAP_PROP_POS_MSEC)))
+            max_seconds = getattr(args, "max_duration_seconds", None)
+            if max_seconds is not None and (timestamp_ms >= max_seconds * 1000
+                                            or frame_index / fps >= max_seconds):
+                raise ValueError(f"视频实际时长超过 {max_seconds} 秒，请剪短后重试。")
             tick = time.perf_counter()
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
