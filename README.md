@@ -1,3 +1,5 @@
+AI软件创作赛道 - MotionDiff - MotionDiff 动作对比大师
+
 # MotionDiff
 
 本机双视频动作比较原型：在浏览器中选择参考视频和学员视频，由 MediaPipe 提取姿态并生成可回看的差异报告。当前仅针对 `videos/test2` 所示的站立侧抬腿与手臂抬起序列进行初步比较；新录视频验收仍待完成。
