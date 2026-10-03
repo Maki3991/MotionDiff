@@ -9,7 +9,6 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-mark">MD</span><span>MotionDiff</span></div>
-    <div class="topbar-note">MediaPipe 动作比较 · 服务端处理</div>
   </header>
 
   <main class="shell">
@@ -59,14 +58,14 @@
       </div>
       <div class="protocol">
         <span class="protocol-dot"></span>
-        <div><strong>建议拍摄条件</strong><br><span>同一方向、相近高度与距离；一人完整出镜</span></div>
+        <div><strong>建议拍摄条件</strong><br><span>相近侧面机位与距离；一人完整出镜；每段一次完整深蹲</span></div>
       </div>
     </section>
 
     <section class="workspace-panel" aria-labelledby="input-title">
       <div class="section-head">
         <div><p class="eyebrow">输入</p><h2 id="input-title">选择两段视频</h2></div>
-        <span class="format-note">建议每段 10–20 秒 · 默认最多 60 秒、50 MB</span>
+        <span class="format-note">站立→下蹲→起身 · 每段最多 60 秒、50 MB</span>
       </div>
       <form id="analysis-form">
         <div class="upload-grid">
@@ -86,7 +85,7 @@
           </label>
         </div>
         <div class="form-actions">
-          <p class="privacy-note">视频和分析结果保存在当前服务的 MotionDiff 存储目录。</p>
+          <p class="privacy-note">视频保存在当前服务；动作指标和少量证据截图将发送至 AI 服务生成建议。</p>
           <button class="primary-button" id="analyze-button" type="submit">开始分析 <span aria-hidden="true">→</span></button>
         </div>
       </form>
@@ -96,6 +95,7 @@
       <div class="status-row"><span class="status-label" id="status-label">准备中</span><span id="status-percent">0%</span></div>
       <div class="progress-track"><div id="progress-bar"></div></div>
       <p id="status-message">等待上传</p>
+      <button class="quiet-button" id="retry-status" type="button" hidden>重试获取报告</button>
     </section>
 
     <section class="results" id="results" hidden>
@@ -104,16 +104,11 @@
         <div class="result-actions"><a id="report-link" class="text-button" href="#" target="_blank">打开 Markdown 报告</a><button id="new-analysis" class="quiet-button" type="button">重新分析</button></div>
       </div>
 
-      <section class="student-feedback" id="student-feedback" aria-labelledby="student-feedback-title">
-        <div class="section-head compact"><h3 id="student-feedback-title">学员动作反馈</h3></div>
-        <div id="student-feedback-content">AI 反馈尚未接入。</div>
-      </section>
-
       <div class="judgement-note" id="judgement-note" hidden></div>
 
       <div class="metrics-grid">
         <article class="metric"><span class="metric-label">未校准相似度指数</span><strong id="metric-score">—</strong><span class="metric-note">仅用于本次相对比较</span></article>
-        <article class="metric"><span class="metric-label">平均位置差</span><strong id="metric-delta">—</strong><span class="metric-note">单位：肩宽</span></article>
+        <article class="metric"><span class="metric-label">平均位置差指数</span><strong id="metric-delta">—</strong><span class="metric-note">无量纲 · 内部归一化距离</span></article>
         <article class="metric"><span class="metric-label">时间对齐覆盖</span><strong id="metric-coverage">—</strong><span class="metric-note">参考 / 学员轨迹</span></article>
         <article class="metric"><span class="metric-label">处理耗时</span><strong id="metric-time">—</strong><span class="metric-note">包含逐帧 JSON 导出</span></article>
       </div>
@@ -128,15 +123,20 @@
         <div class="pose-canvas-grid"><div><canvas id="reference-pose" width="420" height="260"></canvas><span>参考动作</span></div><div><canvas id="student-pose" width="420" height="260"></canvas><span>学员动作</span></div></div>
       </article>
 
+      <section class="student-feedback" id="student-feedback" aria-labelledby="student-feedback-title" aria-live="polite">
+        <div class="section-head compact"><h3 id="student-feedback-title">AI 建议</h3><span class="format-note" id="ai-review-status"></span></div>
+        <div id="student-feedback-content"></div>
+      </section>
+
       <div class="report-grid">
         <article class="report-section findings-section"><div class="section-head compact"><div><p class="eyebrow">定位结果</p><h3>优先回看的差异</h3></div><span id="finding-count" class="count-badge">0</span></div><div id="findings" class="findings"></div></article>
-        <article class="report-section"><div class="section-head compact"><div><p class="eyebrow">动作进度</p><h3>各阶段位置差</h3></div></div><div class="table-wrap"><table><thead><tr><th>阶段</th><th>最大差异部位</th><th>平均差</th></tr></thead><tbody id="phase-table"></tbody></table></div></article>
+        <article class="report-section"><div class="section-head compact"><div><p class="eyebrow">动作进度</p><h3>各阶段位置差</h3></div></div><div class="table-wrap"><table><thead><tr><th>阶段</th><th>最大差异部位</th><th>平均差指数</th></tr></thead><tbody id="phase-table"></tbody></table></div></article>
       </div>
       <div class="limitations" id="limitations"></div>
     </section>
     </section>
   </main>
-  <footer>MotionDiff · MediaPipe Pose Landmarker · 当前结果用于探索性比较</footer>
+  <footer>MotionDiff · 当前结果用于探索性比较</footer>
   <script src="/static/app.js"></script>
 </body>
 </html>

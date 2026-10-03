@@ -13,6 +13,9 @@ __pycache__/
 /analysis/app_runs/
 /analysis/results/
 /reports/
+/.tmp-npm/
+/.playwright-cli/
+/output/playwright/
 docs/.obsidian/app.json
 docs/.obsidian/appearance.json
 docs/.obsidian/core-plugins.json

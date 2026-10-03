@@ -1,6 +1,6 @@
 # VPS 部署说明
 
-当前 MotionDiff 是一个同源的 Python 服务：它同时提供 `static/` 页面、`/api/analyze` 上传接口、进度查询、视频文件和报告文件。VPS 部署不需要数据库，也不需要外部 AI API；MediaPipe 在 VPS 本地运行。
+当前 MotionDiff 是一个同源的 Python 服务：它同时提供 `static/` 页面、`/api/analyze` 上传接口、进度查询、视频文件和报告文件。姿态提取和比较由 VPS 本地 MediaPipe 运行；深蹲的可读建议可选调用外部 AI API，不需要数据库。
 
 ## 1. VPS 环境
 
@@ -91,9 +91,9 @@ server {
 
 ## 4. API key 边界
 
-当前代码没有读取或调用任何外部 API key。`/api/analyze` 是 MotionDiff 自己的 HTTP 接口，姿态分析由本地 MediaPipe 完成。
+`/api/analyze` 是 MotionDiff 自己的 HTTP 接口，姿态分析仍由本地 MediaPipe 完成。`action=squat` 在服务端读取 `.env` 中的 AI 配置并调用外部 Responses API；通用比较不调用 AI。AI 不可用时本地报告仍完成。
 
-黑客松提供的 API key 只有在明确接入某个外部能力时才需要，例如生成文字总结、调用云端模型或对象存储。届时应放在 VPS 的环境变量或 systemd `EnvironmentFile` 中，不能写进 `static/app.js`、HTML、Git 或报告文件。接入前需要确认供应商、API 基础 URL、模型名、计费/限额和允许的出网策略。
+黑客松提供的 API key 可用于生成深蹲文字总结，但应放在 VPS 的环境变量或 systemd `EnvironmentFile` 中，不能写进 `static/app.js`、HTML、Git 或报告文件。部署前仍需确认供应商、API 基础 URL、模型名、计费/限额和允许的出网策略；完整配置见 [AI_API_SETUP.md](AI_API_SETUP.md)。
 
 ## 5. 当前上线边界
 

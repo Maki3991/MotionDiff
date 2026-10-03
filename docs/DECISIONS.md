@@ -1,8 +1,9 @@
 # Decisions and Open Questions
 
-- 2026-10-03 correction: Withdraw the fixed two-item squat web feedback, offline rule implementation and report truncation. Restore all generic report data and Markdown sections; retain video URL and HTTP Range fixes. Place a generic student feedback section first in the results, reserved for future API-generated text under `comparison.student_feedback`. API integration is not implemented.
+- 2026-10-03: Adopt the completed AI-feedback scope from `AI_FEEDBACK_DECISIONS.md`: current action is one complete side-view squat; the selected reference is the target; evidence dimensions are knee trajectory, depth and trunk inclination; send derived metrics plus limited evidence screenshots; return zero to three evidence-linked suggestions; keep all generic findings, metrics, videos and Markdown. AI suggestions are pending human review and must degrade to the local report on provider failure.
+- 2026-10-03 historical correction: The earlier fixed two-item squat web feedback, offline rule implementation and report truncation were withdrawn. The current implementation supersedes that temporary state with backend AI output while retaining the video URL and HTTP Range fixes.
 
-- Last updated: 2026-10-02
+- Last updated: 2026-10-03
 
 ## Settled by the team
 
