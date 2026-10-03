@@ -1,7 +1,7 @@
 # Pose Data Contract
 
 - Status: MediaPipe prototype contract; engine-neutral boundaries retained
-- Last updated: 2026-10-02
+- Last updated: 2026-10-03
 
 ## 1. Purpose
 Define the boundary between pose extraction and movement comparison. Preserve engine output and allow the pose engine to change without treating extracted landmarks as an action judgment.
@@ -30,7 +30,9 @@ The selected interface choice is to provide raw keypoints plus generic normalize
 
 ## 4. Derived features and action-specific data
 
-- The generic web feedback container accepts optional text under `comparison.student_feedback`; no API currently produces this field. Fixed squat feedback rules have been withdrawn. Existing comparison metrics and the per-frame schema remain unchanged.
+- The squat action layer stores `comparison.squat_evidence` and `comparison.ai_feedback`. The evidence layer derives side-view knee angle, trunk inclination, thigh angle, hip/knee height relation and foot direction from named MediaPipe landmarks. It gates incomplete, multiple-repetition and low-coverage inputs before an external request.
+- `comparison.ai_feedback` is generated only for `action=squat`. The backend sends derived metrics, quality information and up to four representative evidence images; it does not send source videos, names or paths. The provider must return a strict JSON object with a summary and zero to three suggestions whose evidence IDs are checked server-side. Suggestions are marked `review_status: pending`.
+- If AI is disabled, unavailable, times out or returns invalid evidence, the complete local comparison report remains available and the AI section shows a sanitized status. Generic comparison requests do not call the AI provider.
 - Joint angles, selected keypoint groups, movement phases, and coaching rules belong to the comparison/action layer unless a future engine adapter provides a clearly documented derived field.
 - Derived fields must identify the rule/version that produced them.
 - The extraction layer must not label an action as correct or incorrect.
@@ -89,7 +91,13 @@ This is illustrative, not a locked serialization format:
 - Return a processing/quality status when no usable person or too few required keypoints are detected.
 - Do not convert missing data into a zero-valued joint position.
 
-## 9. Implemented MediaPipe file adapter (2026-10-02)
+## 9. Squat evidence payload
+
+`tools/squat_evidence.py` returns a versioned evidence object with `status`, `reasons`, per-clip coverage/selected anatomical side, five phase windows (`standing`, `descent`, `bottom`, `ascent`, `finish`), metric medians/ranges and paired evidence IDs. The supported dimensions are `knee_trajectory`, `depth` and `trunk_angle`; a dimension may be absent when its required landmarks or stable foot direction are unavailable. This is a feature extraction contract, not a correctness classifier.
+
+The provider-facing copy removes internal femur-scale ratios and expresses them as cautious anatomical height relations. Internal evidence is retained in the local JSON report for debugging and review.
+
+## 10. Implemented MediaPipe file adapter (2026-10-02)
 
 `tools/export_mediapipe_json.py` implements the prototype per-frame schema `mediapipe-pose-frame/1.0`. It exports every decoded frame, with an independent run summary under `_meta/`. The engine is still a benchmark candidate.
 

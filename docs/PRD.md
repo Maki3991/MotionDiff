@@ -1,29 +1,29 @@
 # MotionDiff Product Requirements (Draft)
 
-- Status: Local prototype runnable; report-usability improvement planned, new-recording acceptance pending
-- Last updated: 2026-10-02
+- Status: Local squat AI prototype runnable; human usefulness review and VPS deployment pending
+- Last updated: 2026-10-03
 
 ## 1. Product goal
-Help a participant compare a recorded movement with a prepared reference movement. The first supported example is the standing side leg raise and arm-raising sequence visible in `videos/test2/A-标准.mp4` and `videos/test2/B-学员.mp4`. The system extracts body pose data from both recordings, compares the movement sequences, and presents an exploratory similarity index with the main joint or clip-progress differences.
+Help a participant compare one recorded squat with a prepared reference squat. The current supported action is a single complete side-view squat; the system extracts body pose data, compares the movement phases, and presents local evidence plus optional AI-written, reference-relative suggestions.
 
 ## 2. Product shape
 The front end may organize a broad catalog of sports and movements, including basketball, football, and fitness. This catalog is a navigation and product-structure goal. It does not mean the first version analyzes all those sports.
 
-The initial implementation compares pre-trimmed clips of the standing side leg raise and arm-raising sequence shown in `test2`. The two clips are not identical in duration or exact repetition timing, so comparison results describe pose differences after whole-clip DTW alignment; they do not verify that the same semantic repetition was aligned. Other movements must be visibly marked as planned, unavailable, or illustrative until their analysis rules exist.
+The legacy `test2` standing side-leg-raise sequence remains a generic comparison regression baseline. The current user flow uses the supported squat action and requires one complete repetition per clip. Other movements remain planned or unavailable until their action rules exist.
 
 ## 3. Intended demo workflow
-1. A user selects a coach/reference video and a student video in the local browser app.
-2. The application processes both videos with MediaPipe Pose Landmarker and keeps the source video, per-frame JSON and run metadata.
-3. A participant recording is expected to follow the same camera direction, approximate height and distance, with one person fully visible.
-4. The comparison module normalizes the two sequences, aligns their time progress and computes differences.
-5. The result view presents both videos, an exploratory similarity index, localized differences by joint and clip-progress phase, and controls that seek both videos to each difference's evidence timestamps.
+1. A user selects a reference squat video and a student squat video in the browser.
+2. The application processes both videos with MediaPipe Pose Landmarker and keeps source video, per-frame JSON and run metadata.
+3. The evidence layer extracts standing/descent/bottom/ascent/finish windows from the single repetition.
+4. The comparison module preserves the generic findings; the optional AI provider receives derived metrics and limited evidence screenshots.
+5. The result view presents the AI summary/suggestions directly below the keypoint preview, retaining videos, similarity index, localized differences and evidence seek controls.
 
 The capture and processing interaction is record-then-process for the initial demo. Default upload admission is 60 seconds and 50 MiB per clip, with one active upload/analysis and a bounded frame-pair budget. Acceptable wait time remains TBD pending runtime benchmarking; admission does not validate long-sequence analysis.
 
 ## 4. Requirements
 
 ### P0: Framework and first supported action
-- Provide an end-to-end path for the supported standing side leg raise and arm-raising clips.
+- Provide an end-to-end path for single side-view squat clips with optional evidence-linked AI suggestions; keep the legacy generic comparison baseline.
 - Keep the pose engine behind an adapter so another engine can replace it without rewriting comparison and result presentation.
 
 ### P0: Pose data and comparison
@@ -48,7 +48,7 @@ The capture and processing interaction is record-then-process for the initial de
 - Providing a universal exercise or sports-coaching model.
 - Promising real-time performance before testing the selected inference engine on the target laptop.
 
-## 6. Next iteration (selected priority; not implemented)
+## 6. Next iteration (human review pending)
 
 Prioritize review and improvement of the existing report against its paired reference/student video evidence. The next result should let a team reviewer confirm or reject each leading difference by body part, side, matched timestamps, direction and uncertainty. Refine ranking or wording only when that review supports the change; the similarity index remains exploratory. Use fresh recordings of the currently supported action for acceptance.
 

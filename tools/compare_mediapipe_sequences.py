@@ -86,7 +86,7 @@ def load_sequence(directory: Path) -> dict:
         person = people[0] if people else None
         points = {}
         if person:
-            for name in REQUIRED_JOINTS + ("left_ear", "right_ear"):
+            for name in REQUIRED_JOINTS + ("left_ear", "right_ear", "left_heel", "right_heel", "left_foot_index", "right_foot_index"):
                 points[name] = point_from_person(person, name)
         frames.append({
             "frame_index": int(payload.get("frame_index", frame_index(path))),
@@ -118,7 +118,8 @@ def normalize_frame(frame: dict) -> dict:
     if scale < 1:
         return {"valid": False, "points": {}, "scale": scale}
     normalized = {}
-    for name, point in points.items():
+    for name in REQUIRED_JOINTS + ("left_ear", "right_ear"):
+        point = points.get(name)
         value = xy(point)
         if value and point_quality(point) >= QUALITY_THRESHOLD:
             normalized[name] = ((value[0] - center[0]) / scale,
@@ -316,8 +317,7 @@ def compare(reference: dict, target: dict, *, reference_label: str = "参考视�
                     "peak_reference_timestamp_ms": peak_row["reference_timestamp_ms"] if peak_row else None,
                     "peak_target_timestamp_ms": peak_row["target_timestamp_ms"] if peak_row else None,
                     "message": f"{JOINT_LABELS[name]}相对参考位置{direction_text}，"
-                               f"该关节平均位置差为 {metric['mean']:.3f} 个肩宽，峰值出现在动作进度 {peak_phase or '未知'}；"
-                               "建议回看对应片段并尝试向参考位置靠近。",
+                               f"峰值出现在动作进度 {peak_phase or '未知'}；请回看确认对应姿态。",
                 })
     findings.sort(key=lambda item: item["mean_delta"], reverse=True)
     angle_metrics = {name: summarize(values) for name, values in angles.items()}
@@ -402,12 +402,23 @@ def write_report(result: dict, output: Path) -> None:
         f"- 学员视频：{result['target_label']}，JSON 帧数 {result['target_quality']['json_frames']}。",
         f"- DTW 对齐帧数：{result['alignment']['path_length']}；平均对齐代价：{result['alignment']['mean_dtw_cost']:.4f}。",
         f"- 对齐路径中有足够成对关键点的帧：{result['alignment']['comparable_path_coverage']:.0%}。",
-        f"- 平均位置差：{result['summary']['mean_position_delta_shoulder_widths']:.4f} 个肩宽。" if result['summary']['mean_position_delta_shoulder_widths'] is not None else "- 平均位置差：无法计算。",
+        f"- 平均位置差指数：{result['summary']['mean_position_delta_shoulder_widths']:.4f}（内部归一化距离，无量纲，不是实际身体位移）。" if result['summary']['mean_position_delta_shoulder_widths'] is not None else "- 平均位置差指数：无法计算。",
         f"- 未校准相似度指数：{result['summary']['similarity_index']:.1f}/100。" if result['summary']['similarity_index'] is not None else "- 未校准相似度指数：无法计算。",
     ]
     if result.get("status_reasons"):
         md += ["", "## 无法判断原因", ""]
         md += [f"- {reason}" for reason in result["status_reasons"]]
+    feedback = result.get("ai_feedback")
+    if feedback:
+        md += ["", "## AI 建议", ""]
+        if feedback["status"] == "complete":
+            md += ["待本人对照视频核对。", "", feedback["summary"]]
+            for item in feedback["suggestions"]:
+                md += ["", f"### {item['title']}", "", item["observation"], "", item["adjustment"]]
+                for evidence in item["evidence"]:
+                    md.append(f"- {evidence['phase_label']}：参考 {evidence['reference']['timestamp_ms']/1000:.2f}s / 学员 {evidence['student']['timestamp_ms']/1000:.2f}s。")
+        else:
+            md.append(feedback["message"])
     md += ["", "## 主要差异", ""]
     if result["findings"]:
         for finding in result["findings"]:

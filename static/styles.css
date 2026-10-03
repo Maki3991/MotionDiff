@@ -63,8 +63,15 @@ button { cursor: pointer; }
 .metric strong { display: block; margin: 8px 0 3px; font-size: 28px; line-height: 1; }
 .video-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 28px; }
 .pose-preview { margin-top: 16px; }
-.student-feedback { margin-bottom: 20px; border-top: 3px solid var(--teal); }
-#student-feedback-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.student-feedback { margin: 24px 0 20px; padding: 22px 0; border-top: 3px solid var(--teal); border-bottom: 1px solid var(--line); }
+#student-feedback-content { overflow-wrap: anywhere; line-height: 1.8; }
+.ai-summary { margin-bottom: 16px; font-weight: 600; }
+.ai-suggestion { padding: 16px 0; border-top: 1px solid var(--line); }
+.ai-suggestion h4 { margin: 0 0 8px; font-size: 16px; }
+.ai-suggestion p { margin: 8px 0; }
+.ai-adjustment { color: var(--teal-dark); }
+.ai-seek { margin-right: 8px; white-space: normal; text-align: left; }
+.ai-state { margin: 0; color: var(--muted); }
 .pose-canvas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .pose-canvas-grid > div { padding: 10px; background: #142126; color: #9fb2b4; font-size: 12px; }
 .pose-canvas-grid canvas { display: block; width: 100%; height: auto; background: #0d1619; }

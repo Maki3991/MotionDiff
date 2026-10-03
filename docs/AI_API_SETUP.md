@@ -1,6 +1,6 @@
 # MotionDiff AI API 环境配置
 
-这份文件说明下一轮接入 AI 建议时需要填写的环境变量。当前代码还没有调用 AI API；填写密钥不会自动产生网络请求。
+AI 建议已接入 Python 后端。启动时自动读取项目根目录 `.env`，操作系统环境变量优先；修改后需重启服务。密钥只由后端读取。
 
 ## 填写位置
 
@@ -8,10 +8,10 @@
 
 ```env
 AI_API_KEY=把黑客松提供的 API key 写在这里
-AI_API_BASE_URL=把官方 API 地址写在这里
-AI_MODEL=把官方模型名写在这里
-AI_ENABLED=false
-AI_TIMEOUT_SECONDS=45
+AI_API_BASE_URL=https://api.openai-next.com/v1
+AI_MODEL=gpt-6.1-sol
+AI_ENABLED=true
+AI_TIMEOUT_SECONDS=120
 AI_MAX_OUTPUT_TOKENS=1200
 ```
 
@@ -21,24 +21,25 @@ AI_MAX_OUTPUT_TOKENS=1200
 
 - `.env`：本机填写，已加入 `.gitignore`。
 - `.env.example`：不含真实密钥的配置模板，可以提交到 Git。
-- `AI_ENABLED=false`：当前保持关闭，因为 API 协议、模型和输出格式还没有确认。
-- 下一轮接入后，AI 请求应由后端发出，浏览器只接收脱敏后的建议结果。
+- 本机 `.env` 已启用 AI；`.env.example` 保持关闭默认值。`AI_ENABLED=false` 时仅显示本地报告，不请求外部服务。
+- AI 请求由后端发出，浏览器接收脱敏后的建议和本地证据。`action=squat` 启用深蹲流程；历史通用比较不调用 AI。
+- 真实测试确认 `gpt-6.1-sol` 能通过 `/v1/responses` 接收文字指标和四张 JPEG、使用严格 JSON Schema 返回中文建议；也验证了零建议和超时状态。
 
-## 需要从官方资料确认的字段
+## 接口与请求边界
 
-在打开 `AI_ENABLED` 前，确认以下信息：
+官方快速接入：[OpenAI Next Quickstart](https://credits.openai-next.com/guide/quickstart)。该页面给出带 `/v1` 的 OpenAI 兼容地址和 Bearer 鉴权示例；Responses 路径、图像输入和严格结构化输出由本轮真实请求验证。
 
-1. API 是 OpenAI 兼容接口，还是自定义 REST 接口。
-2. 完整请求地址和鉴权方式，是 `Authorization: Bearer` 还是其他 Header。
-3. 可用模型名称、输入输出格式和单次请求限制。
-4. 失败、超时、余额不足时的错误码和重试要求。
+程序支持 base URL 带或不带 `/v1`，统一构建 `/v1/responses`；必须 HTTPS。请求使用 Bearer、`store:false`、低推理强度，默认 1200 输出 token；代码默认 45 秒网络超时，本机在连续超时后调至 90 秒（最大 120 秒）。不自动重试计费请求。
 
-官方资料没有明确前，不要猜测 endpoint、模型名或请求字段。
+每次只发送深蹲窗口指标、数据质量、证据时间及参考/学员的下蹲中段和最低位四张截图。截图长边最多 640 像素、每张最多 200 KB。不发送整段视频、文件名、姓名、本地路径、密钥；内部髋膝尺度会转为高低关系后发送。
 
-接口协议和地址可以由 Agent 查资料确认；你只需提供 key，以及控制台给出的地址、模型名或接口文档链接。不必理解底层 API 协议。
+数据不足时不调用 API；格式错误、未知证据引用、服务拒绝访问或超时只影响 AI 区域，本地报告继续保存。页面建议标记“待核对”。`store:false` 不代表提供商作出零保留承诺。
 
-官方接口文档链接（可自由填写）：
+## 本地检查
 
-> 
+```powershell
+& .\.venv-mediapipe\Scripts\python.exe .\app.py --port 8880
+& .\.venv-mediapipe\Scripts\python.exe -m unittest discover -s tools/tests -v
+```
 
-数据发送范围和真人验收选择请填写 [AI_FEEDBACK_DECISIONS.md](AI_FEEDBACK_DECISIONS.md)。下一轮由程序加载 `.env`，核对提供商配置，按问卷授权范围进行真实调用；本轮不调用 API。该文件仅做配置说明，不要把真实 key 写在这里。
+浏览器打开 `http://127.0.0.1:8880/#analyze/strength/squat`。两段各为一次站立→下蹲→起身，使用相近侧面机位，完整露出身体。数据发送和本人验收按 [AI_FEEDBACK_DECISIONS.md](AI_FEEDBACK_DECISIONS.md) 执行。不要将 `.env` 提交或放进静态目录。

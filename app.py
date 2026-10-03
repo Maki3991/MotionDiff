@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -18,8 +19,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote, urlparse
 
+from tools.ai_feedback import AIConfig, generate_feedback, load_env
+
 
 ROOT = Path(__file__).resolve().parent
+load_env(ROOT / ".env")
 STATIC_DIR = ROOT / "static"
 
 
@@ -60,7 +64,7 @@ class JobStore:
         self._slot.release()
 
     def create(self, reference: bytes, student: bytes, reference_name: str,
-               student_name: str) -> str:
+                student_name: str, action: str = "generic") -> str:
         run_id = uuid.uuid4().hex
         with self._lock:
             self._jobs[run_id] = {
@@ -69,7 +73,7 @@ class JobStore:
                 "created_at": time.time(),
             }
         thread = threading.Thread(
-            target=self._run, args=(run_id, reference, student, reference_name, student_name),
+            target=self._run, args=(run_id, reference, student, reference_name, student_name, action),
             daemon=True,
         )
         try:
@@ -91,7 +95,7 @@ class JobStore:
             return dict(job) if job else None
 
     def _run(self, run_id: str, reference: bytes, student: bytes,
-             reference_name: str, student_name: str) -> None:
+              reference_name: str, student_name: str, action: str = "generic") -> None:
         started = time.perf_counter()
         run_dir = RUNS_DIR / run_id
         try:
@@ -161,6 +165,26 @@ class JobStore:
             if len(reference_sequence["frames"]) * len(student_sequence["frames"]) > MAX_ALIGNMENT_CELLS:
                 raise ValueError("实际视频帧数超过比较预算，请剪短视频或降低帧率。")
             result = compare(reference_sequence, student_sequence)
+            if action == "squat":
+                self.update(run_id, progress=86, message="提取深蹲阶段与动作证据")
+                from tools.squat_evidence import build_evidence, evidence_images
+                try:
+                    evidence = build_evidence(reference_sequence, student_sequence)
+                except Exception:
+                    evidence = {"status": "insufficient_data", "reasons": ["深蹲证据提取失败，本地比较报告已保留。"]}
+                result["squat_evidence"] = evidence
+                self.update(run_id, progress=90, message="正在检查深蹲证据并生成 AI 建议")
+                try:
+                    config = AIConfig.from_env()
+                    result["ai_feedback"] = generate_feedback(
+                        config, evidence,
+                        lambda: evidence_images(evidence, reference_path, student_path, cv2),
+                    )
+                except (ValueError, TypeError):
+                    result["ai_feedback"] = {"status": "error", "message": "AI 环境变量无效，本地报告已保留。"}
+                result["limitations"][1] = "深蹲建议要求相近的侧面机位；二维单目数据不能消除机位差异。"
+            else:
+                result["ai_feedback"] = {"status": "unsupported", "message": "本次为通用比较，AI 建议目前仅支持侧面单次深蹲。"}
             top_finding = (result.get("findings") or [None])[0]
             if top_finding:
                 result["visualization"] = {
@@ -216,6 +240,8 @@ def parse_upload(body: bytes, content_type: str) -> dict[str, tuple[str, bytes]]
         filename = part.get_filename()
         if disposition == "form-data" and name and filename is not None:
             files[name] = (filename, part.get_payload(decode=True) or b"")
+        elif disposition == "form-data" and name == "action":
+            files[name] = ("", part.get_payload(decode=True) or b"")
     return files
 
 
@@ -344,7 +370,11 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
                     "error": f"每个视频不能超过 {MAX_VIDEO_BYTES / 1024 / 1024:g} MB，请压缩后上传。",
                 })
                 return
-            run_id = STORE.create(reference, student, reference_name, student_name)
+            action = files.get("action", ("", b"generic"))[1].decode("utf-8", errors="replace")
+            if action not in ("generic", "squat"):
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "当前不支持此动作。"})
+                return
+            run_id = STORE.create(reference, student, reference_name, student_name, action)
             submitted = True
             self._json(HTTPStatus.ACCEPTED, {"run_id": run_id, "status": "queued"})
         except TimeoutError:
@@ -403,6 +433,16 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
         print(f"[{self.log_date_time_string()}] {fmt % args}")
 
 
+class MotionDiffServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        # Windows SO_REUSEADDR can let two independent job stores share a port.
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
@@ -417,8 +457,13 @@ def main() -> int:
     )
     args = parser.parse_args()
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer((args.host, args.port), MotionDiffHandler)
+    server = MotionDiffServer((args.host, args.port), MotionDiffHandler)
     print(f"MotionDiff running at http://{args.host}:{args.port}")
+    try:
+        config = AIConfig.from_env()
+        print(f"AI enabled={config.enabled}, model={config.model}, timeout={config.timeout}s")
+    except (ValueError, TypeError):
+        print("AI configuration is invalid; local comparison remains available.")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

@@ -40,6 +40,7 @@ const progressBar = document.querySelector('#progress-bar');
 const statusMessage = document.querySelector('#status-message');
 const results = document.querySelector('#results');
 const analyzeButton = document.querySelector('#analyze-button');
+const retryStatus = document.querySelector('#retry-status');
 let activeRun = null;
 
 const views = {
@@ -155,8 +156,8 @@ function format(value, digits = 3) {
 
 function formatTime(milliseconds) {
   if (milliseconds === null || milliseconds === undefined || !Number.isFinite(Number(milliseconds))) return '未知';
-  const totalSeconds = Math.max(0, Math.floor(Number(milliseconds) / 1000));
-  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+  const totalSeconds = Math.max(0, Number(milliseconds) / 1000);
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${(totalSeconds % 60).toFixed(2).padStart(5, '0')}`;
 }
 
 function seekVideo(videoId, milliseconds) {
@@ -169,9 +170,34 @@ function seekVideo(videoId, milliseconds) {
 
 function renderStudentFeedback(feedback) {
   const content = document.querySelector('#student-feedback-content');
-  content.textContent = typeof feedback === 'string' && feedback.trim()
-    ? feedback
-    : 'AI 反馈尚未接入。';
+  content.replaceChildren();
+  document.querySelector('#ai-review-status').textContent = feedback?.status === 'complete' ? '待核对' : '';
+  const add = (parent, tag, text, className) => {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    if (className) node.className = className;
+    parent.append(node);
+    return node;
+  };
+  if (feedback?.status !== 'complete') {
+    add(content, 'p', feedback?.message || '本次没有 AI 建议。', 'ai-state');
+    return;
+  }
+  add(content, 'p', feedback.summary, 'ai-summary');
+  (feedback.suggestions || []).forEach((item) => {
+    const article = add(content, 'article', '', 'ai-suggestion');
+    add(article, 'h4', item.title);
+    add(article, 'p', item.observation);
+    add(article, 'p', item.adjustment, 'ai-adjustment');
+    (item.evidence || []).forEach((evidence) => {
+      const button = add(article, 'button', `回看${evidence.phase_label} · A ${formatTime(evidence.reference.timestamp_ms)} / B ${formatTime(evidence.student.timestamp_ms)}`, 'finding-seek ai-seek');
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        seekVideo('reference-video', evidence.reference.timestamp_ms);
+        seekVideo('student-video', evidence.student.timestamp_ms);
+      });
+    });
+  });
 }
 
 function renderResult(payload) {
@@ -197,11 +223,11 @@ function renderResult(payload) {
   studentVideo.src = payload.video_urls.student;
   document.querySelector('#reference-video-name').textContent = '参考动作';
   document.querySelector('#student-video-name').textContent = '学员动作';
-  renderStudentFeedback(report.student_feedback);
+  renderStudentFeedback(report.ai_feedback);
   document.querySelector('#findings').innerHTML = (report.findings || []).map((item) => `
     <div class="finding">
       <div class="finding-title"><span class="finding-chip">${item.joint_label}</span><span>${item.direction}</span></div>
-      <p>${item.message} 对齐覆盖 ${(item.coverage * 100).toFixed(0)}%，P90 差异 ${format(item.p90_delta, 3)} 个肩宽。</p>
+      <p>${item.message} 对齐覆盖 ${(item.coverage * 100).toFixed(0)}%，P90 位置差指数 ${format(item.p90_delta, 3)}。</p>
       <button class="finding-seek" type="button" data-reference-ms="${item.peak_reference_timestamp_ms ?? ''}" data-student-ms="${item.peak_target_timestamp_ms ?? ''}">定位 A ${formatTime(item.peak_reference_timestamp_ms)} / B ${formatTime(item.peak_target_timestamp_ms)}</button>
     </div>`).join('') || '<p class="format-note">当前有效关键点不足，无法生成可解释差异。</p>';
   document.querySelectorAll('#findings .finding-seek').forEach((button) => {
@@ -214,7 +240,7 @@ function renderResult(payload) {
     const candidates = Object.entries(phase.joints || {}).filter(([, value]) => value.mean != null).sort((a, b) => b[1].mean - a[1].mean);
     const top = candidates[0];
     const labels = {left_wrist:'左手腕',right_wrist:'右手腕',left_elbow:'左肘',right_elbow:'右肘',left_shoulder:'左肩',right_shoulder:'右肩',left_hip:'左髋',right_hip:'右髋',left_knee:'左膝',right_knee:'右膝',left_ankle:'左踝',right_ankle:'右踝'};
-    return `<tr><td>${phase.phase}</td><td>${top ? (labels[top[0]] || top[0]) : '—'}</td><td>${top ? `${Number(top[1].mean).toFixed(3)} 个肩宽` : '—'}</td></tr>`;
+    return `<tr><td>${phase.phase}</td><td>${top ? (labels[top[0]] || top[0]) : '—'}</td><td>${top ? Number(top[1].mean).toFixed(3) : '—'}</td></tr>`;
   }).join('');
   document.querySelector('#phase-table').innerHTML = phaseRows;
   document.querySelector('#limitations').innerHTML = `<p>结果边界</p><ul>${(report.limitations || []).map((item) => `<li>${item}</li>`).join('')}</ul>`;
@@ -251,9 +277,29 @@ async function drawPose(canvasId, url, color) {
   } catch (error) { context.fillStyle = '#9fb2b4'; context.font = '13px Segoe UI'; context.fillText('关键点预览不可用', 18, 28); }
 }
 
-async function poll(runId) {
-  const response = await fetch(`/api/status/${runId}`);
-  const data = await response.json();
+async function poll(runId, retries = 0) {
+  if (runId !== activeRun) return;
+  let data;
+  try {
+    const response = await fetch(`/api/status/${runId}`, { signal: AbortSignal.timeout(15000) });
+    if (response.status === 404) {
+      setStatus('failed', 100, '本次任务不存在，服务可能已重启，请重新上传。');
+      analyzeButton.disabled = false;
+      analyzeButton.textContent = '重新分析';
+      rememberRun(null);
+      return;
+    }
+    if (!response.ok) throw new Error('status unavailable');
+    data = await response.json();
+  } catch (error) {
+    if (runId !== activeRun) return;
+    statusMessage.textContent = retries < 5 ? '暂时无法获取进度，正在重连…' : '连接中断，恢复网络后可继续获取本次报告。';
+    retryStatus.hidden = retries < 5;
+    if (retries < 5) window.setTimeout(() => poll(runId, retries + 1), Math.min(5000, 1000 * (retries + 1)));
+    return;
+  }
+  if (runId !== activeRun) return;
+  retryStatus.hidden = true;
   setStatus(data.status, data.progress, data.message || data.error);
   if (data.status === 'complete') {
     analyzeButton.disabled = false;
@@ -269,6 +315,18 @@ async function poll(runId) {
   }
   window.setTimeout(() => poll(runId), 700);
 }
+
+function rememberRun(runId) {
+  try {
+    if (runId) sessionStorage.setItem('motiondiff-run', runId);
+    else sessionStorage.removeItem('motiondiff-run');
+  } catch (error) { /* Storage may be disabled in private browser sessions. */ }
+}
+
+retryStatus.addEventListener('click', () => {
+  retryStatus.hidden = true;
+  if (activeRun) poll(activeRun);
+});
 
 function readVideoDuration(file) {
   return new Promise((resolve, reject) => {
@@ -299,12 +357,14 @@ form.addEventListener('submit', async (event) => {
   const student = document.querySelector('#student-file').files[0];
   if (!reference || !student) return;
   results.hidden = true;
+  retryStatus.hidden = true;
   analyzeButton.disabled = true;
   analyzeButton.textContent = '处理中…';
   setStatus('queued', 0, '正在检查两段视频');
   const data = new FormData();
   data.append('reference', reference);
   data.append('student', student);
+  data.append('action', 'squat');
   try {
     const limitsResponse = await fetch('/api/limits');
     if (!limitsResponse.ok) throw new Error('无法读取上传限制，请稍后重试。');
@@ -323,6 +383,7 @@ form.addEventListener('submit', async (event) => {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || '上传失败');
     activeRun = payload.run_id;
+    rememberRun(activeRun);
     await poll(activeRun);
   } catch (error) {
     analyzeButton.disabled = false;
@@ -332,6 +393,9 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#new-analysis').addEventListener('click', () => {
+  activeRun = null;
+  rememberRun(null);
+  retryStatus.hidden = true;
   results.hidden = true;
   statusPanel.hidden = true;
   form.reset();
@@ -348,3 +412,12 @@ document.querySelector('#coming-back-library').addEventListener('click', () => {
 document.querySelector('#back-to-actions-from-analysis').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
 
 routeFromHash();
+try {
+  const savedRun = sessionStorage.getItem('motiondiff-run');
+  if (/^[a-f0-9]{32}$/.test(savedRun || '') && window.location.hash.startsWith('#analyze/')) {
+    activeRun = savedRun;
+    analyzeButton.disabled = true;
+    setStatus('processing', 0, '恢复本次分析报告');
+    poll(savedRun);
+  }
+} catch (error) { /* Continue without report restoration when storage is unavailable. */ }
