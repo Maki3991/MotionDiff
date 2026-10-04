@@ -123,11 +123,11 @@ class VideoAdmissionTests(unittest.TestCase):
         import cv2
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = app.JobStore()
+            store = app.JobStore(root)
             self.assertTrue(store.reserve())
             self.assertFalse(store.reserve())
             store._jobs['test'] = {}
-            with patch.object(app, 'RUNS_DIR', root), patch.object(cv2, 'VideoCapture') as decoder:
+            with patch.object(cv2, 'VideoCapture') as decoder:
                 decoder.return_value.isOpened.return_value = True
                 decoder.return_value.get.side_effect = lambda key: 30 if key == cv2.CAP_PROP_FPS else 1830
                 store._run('test', b'reference', b'student', 'ref.mp4', 'student.mp4')
@@ -138,3 +138,97 @@ class VideoAdmissionTests(unittest.TestCase):
             self.assertFalse((root / 'test/pose').exists())
             self.assertTrue(store.reserve())
             store.release()
+
+    def test_delete_run_removes_videos_report_and_blocks_old_urls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_id = 'a' * 32
+            self.store.runs_dir = root
+            video = root / run_id / 'input' / 'reference.mp4'
+            report = root / run_id / 'report' / 'comparison.md'
+            video.parent.mkdir(parents=True)
+            report.parent.mkdir()
+            video.write_bytes(b'video')
+            report.write_text('report', encoding='utf-8')
+            self.store._jobs[run_id] = {'created_at': 1, 'status': 'complete'}
+            address = self.start_http_server()
+            connection = http.client.HTTPConnection(*address, timeout=5)
+            try:
+                connection.request('POST', f'/api/runs/{run_id}/delete')
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read()
+                for path in (f'/runs/{run_id}/input/reference.mp4',
+                             f'/runs/{run_id}/report/comparison.md',
+                             f'/api/status/{run_id}'):
+                    connection.request('GET', path)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 404)
+                    response.read()
+            finally:
+                connection.close()
+            self.assertFalse((root / run_id).exists())
+            self.assertFalse(self.store._delete_requested)
+
+    def test_expired_run_removes_everything(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_id = 'b' * 32
+            self.store.runs_dir = root
+            report = root / run_id / 'report' / 'comparison.md'
+            report.parent.mkdir(parents=True)
+            report.write_text('report', encoding='utf-8')
+            self.store._jobs[run_id] = {'created_at': 1, 'status': 'failed'}
+            self.store.cleanup_expired(now=1 + app.RUN_IDLE_TTL_SECONDS)
+            self.assertIsNone(self.store.get(run_id))
+            self.assertFalse((root / run_id).exists())
+
+    def test_delete_during_processing_removes_files_after_worker_stops(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_id = 'd' * 32
+            store = app.JobStore(root)
+            started = threading.Event()
+            resume = threading.Event()
+
+            def inspect_and_wait(*args, **kwargs):
+                started.set()
+                if not resume.wait(5):
+                    raise TimeoutError('worker did not resume')
+                return {'frames': 1}
+
+            self.assertTrue(store.reserve())
+            store._jobs[run_id] = {'created_at': 1, 'status': 'processing'}
+            store._running.add(run_id)
+            worker = threading.Thread(target=store._run,
+                                      args=(run_id, b'reference', b'student', 'r.mp4', 's.mp4'))
+            with patch('tools.video_limits.inspect_video', side_effect=inspect_and_wait), \
+                    patch.object(app, 'MODEL_PATH', root / 'missing-model'):
+                worker.start()
+                try:
+                    self.assertTrue(started.wait(5))
+                    store.delete(run_id)
+                    self.assertIsNone(store.get(run_id))
+                    self.assertTrue((root / run_id / 'input' / 'reference.mp4').exists())
+                finally:
+                    resume.set()
+                    worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertFalse((root / run_id).exists())
+            self.assertFalse(store._delete_requested)
+            self.assertTrue(store.reserve())
+            store.release()
+
+    def test_startup_cleanup_only_removes_run_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / ('c' * 32)
+            unrelated = root / 'keep-me'
+            run.mkdir()
+            unrelated.mkdir()
+            (run / 'report.md').write_text('temporary', encoding='utf-8')
+            (unrelated / 'note.txt').write_text('keep', encoding='utf-8')
+            with patch.object(app, 'RUNS_DIR', root):
+                app.clear_orphaned_runs_on_start()
+            self.assertFalse(run.exists())
+            self.assertTrue((unrelated / 'note.txt').exists())

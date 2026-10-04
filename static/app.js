@@ -130,7 +130,15 @@ function routeFromHash() {
 }
 
 renderCategoryCards();
-window.addEventListener('hashchange', routeFromHash);
+window.addEventListener('hashchange', () => {
+  if (activeRun && !window.location.hash.startsWith('#analyze/')) {
+    releaseRun();
+    activeRun = null;
+    results.hidden = true;
+    statusPanel.hidden = true;
+  }
+  routeFromHash();
+});
 
 function bindFileName(inputId, outputId) {
   document.querySelector(`#${inputId}`).addEventListener('change', (event) => {
@@ -286,7 +294,6 @@ async function poll(runId, retries = 0) {
       setStatus('failed', 100, '本次任务不存在，服务可能已重启，请重新上传。');
       analyzeButton.disabled = false;
       analyzeButton.textContent = '重新分析';
-      rememberRun(null);
       return;
     }
     if (!response.ok) throw new Error('status unavailable');
@@ -316,12 +323,37 @@ async function poll(runId, retries = 0) {
   window.setTimeout(() => poll(runId), 700);
 }
 
-function rememberRun(runId) {
+function releaseRun(runId = activeRun) {
+  if (!/^[a-f0-9]{32}$/.test(runId || '')) return;
+  const url = `/api/runs/${runId}/delete`;
   try {
-    if (runId) sessionStorage.setItem('motiondiff-run', runId);
-    else sessionStorage.removeItem('motiondiff-run');
-  } catch (error) { /* Storage may be disabled in private browser sessions. */ }
+    if (!navigator.sendBeacon || !navigator.sendBeacon(url, new Blob([], { type: 'application/octet-stream' }))) {
+      fetch(url, { method: 'POST', keepalive: true }).catch(() => {});
+    }
+  } catch (error) { /* Cleanup is best-effort; server TTL is the fallback. */ }
 }
+
+function clearPreviousRun() {
+  let previousRun = null;
+  try {
+    previousRun = sessionStorage.getItem('motiondiff-run-cleanup');
+  } catch (error) { /* Storage may be disabled in private browser sessions. */ }
+  if (!/^[a-f0-9]{32}$/.test(previousRun || '')) return;
+  fetch(`/api/runs/${previousRun}/delete`, { method: 'POST', cache: 'no-store' })
+    .then((response) => {
+      if (!response.ok) return;
+      try {
+        if (sessionStorage.getItem('motiondiff-run-cleanup') === previousRun) {
+          sessionStorage.removeItem('motiondiff-run-cleanup');
+        }
+      } catch (error) { /* Server TTL remains the fallback. */ }
+    })
+    .catch(() => {});
+}
+
+clearPreviousRun();
+window.addEventListener('pagehide', () => releaseRun());
+window.addEventListener('pageshow', (event) => { if (event.persisted) window.location.reload(); });
 
 retryStatus.addEventListener('click', () => {
   retryStatus.hidden = true;
@@ -353,6 +385,9 @@ function readVideoDuration(file) {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  clearPreviousRun();
+  releaseRun();
+  activeRun = null;
   const reference = document.querySelector('#reference-file').files[0];
   const student = document.querySelector('#student-file').files[0];
   if (!reference || !student) return;
@@ -383,7 +418,8 @@ form.addEventListener('submit', async (event) => {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || '上传失败');
     activeRun = payload.run_id;
-    rememberRun(activeRun);
+    try { sessionStorage.setItem('motiondiff-run-cleanup', activeRun); }
+    catch (error) { /* Server TTL remains the fallback when storage is unavailable. */ }
     await poll(activeRun);
   } catch (error) {
     analyzeButton.disabled = false;
@@ -393,8 +429,9 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#new-analysis').addEventListener('click', () => {
+  clearPreviousRun();
+  releaseRun();
   activeRun = null;
-  rememberRun(null);
   retryStatus.hidden = true;
   results.hidden = true;
   statusPanel.hidden = true;
@@ -412,12 +449,3 @@ document.querySelector('#coming-back-library').addEventListener('click', () => {
 document.querySelector('#back-to-actions-from-analysis').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
 
 routeFromHash();
-try {
-  const savedRun = sessionStorage.getItem('motiondiff-run');
-  if (/^[a-f0-9]{32}$/.test(savedRun || '') && window.location.hash.startsWith('#analyze/')) {
-    activeRun = savedRun;
-    analyzeButton.disabled = true;
-    setStatus('processing', 0, '恢复本次分析报告');
-    poll(savedRun);
-  }
-} catch (error) { /* Continue without report restoration when storage is unavailable. */ }

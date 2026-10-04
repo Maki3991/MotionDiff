@@ -1,6 +1,26 @@
 # MotionDiff 验证记录
 
-## 2026-10-03：深蹲 AI 建议（当前实现）
+## 2026-10-04：一次性任务清理（已发布）
+
+- 开发分支 `feature/ephemeral-runs`，线上运行提交 `313a3cd788548c93b19d9c9b37b8e79545cc1133`；`main` 未合并。线上任务目录已切换到 `/dev/shm/motiondiff-runs`（tmpfs，权限 `700`）。
+- 本地 `python -m unittest discover -s tools/tests -v` 35 项通过，包括完成任务删除后视频、报告和状态 URL 返回 404、空闲 TTL 删除、运行中请求删除后的收尾清理。
+- `node --check static/app.js`、`python -m py_compile app.py`、`git diff --check` 通过。
+- 线上已安装 systemd 模板并重启 MotionDiff；Nginx 已配置 `proxy_buffering off`，`nginx -t` 通过并已 reload。公网 `/healthz` 返回 200。
+- 公网使用 `videos/test5/test5-teacher.mp4` 和 `test5-student.mp4` 完成真实分析，任务 `dc522328eafe4ae5ae5e5aff8e3fe598`：本地比较和 AI 建议均 `complete`，耗时约 46 秒；报告返回 200，参考视频 Range 请求返回 206。调用删除接口后，状态、报告和视频 URL 均返回 404，tmpfs 任务目录消失。旧持久目录保持约 6.5 MiB，未因本次分析增长。
+- 浏览器刷新触发清理的前端路径已实现，但本轮未对真实浏览器执行刷新测试；服务端删除接口和异常退出 TTL 已验证。
+
+## 2026-10-04：VPS 首次部署验证
+
+- 发布 GitHub `main` 提交 `1652a76d045912ad1b5feadab89828b847f4eace` 到北京 ECS，域名 <https://motiondiff.maki3991.xyz/>。本地并行开发的未提交改动未发布。
+- Linux 上 31 项自动测试通过；真实模型创建暴露 `libEGL.so.1` / `libGLESv2.so.2` 缺失，补装 `libegl1 libgles2` 后 PoseLandmarker 实际创建通过。没有修改 AI 算法。
+- 公网上传 `student-single.mp4` / `student-variation.mp4`，动作 `squat`；运行 `c0c6624d529b42cd8bf52af0f45c282b` 返回 `complete`，耗时 44.77 秒，99 / 171 帧均检出人体，AI 返回 1 条 `trunk_angle` 建议及证据链接。建议仍为 `review_status: pending`，不是教练验收。
+- Playwright 验证 1440×1000 桌面输入页、390×844 手机完整报告，无横向溢出；两段视频 `readyState=4`，时长 3.3 / 5.7 秒。两段视频 Range `bytes=0-1023` 均返回 206、1024 字节及正确 Content-Range。截图位于本地忽略目录 `output/playwright/deploy-*.png`。
+- HTTPS 健康接口与静态页面可访问，HTTP 返回 301；证书包含正确子域名。`/.env`、`/etc/motiondiff/ai.env` 等返回 404，API 配置目录 / 文件权限为 700 / 600，证书续期计时器和 Nginx reload 钩子已安装。
+- 处理期间 MotionDiff 内存峰值约 230 MiB，cgroup `oom` / `oom_kill` 均为 0；已限制为最多 1 vCPU、900 MiB 内存，对齐帧数乘积预算为 810000。
+- study 验证：HTTPS 200；MainPID 仍为 `130424`，启动时间仍为 `2026-09-13 06:36:31 CST`；Nginx 主配置、两个旧站点配置和 study systemd 配置 SHA-256 均与部署前一致。只新增 MotionDiff 站点，Nginx 经校验后平滑 reload。
+- 当前线上仍是持久结果目录 `/var/lib/motiondiff/runs`，尚无自动清理；不把本地未提交的清理功能记为已上线。本次单组素材和单一网络验证不证明持续负载能力、手机实机或跨运营商访问质量。
+
+## 2026-10-03：深蹲 AI 建议（当日实现）
 
 - 代码分支：`feature/ai-feedback`。问卷选择：1A / 2A / 3B / 4A / 5A。
 - 自动化检查：`python -m unittest discover -s tools/tests -v` 30 项通过；`node --check static/app.js` 通过；`git diff --check` 通过。

@@ -11,6 +11,7 @@ __pycache__/
 
 # Generated per-run videos, pose JSON and comparison reports.
 /analysis/app_runs/
+/.runtime/
 /analysis/results/
 /reports/
 /.tmp-npm/
