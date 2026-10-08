@@ -267,6 +267,7 @@ class JobStore:
                             },
                             "report_url": f"/runs/{run_id}/report/comparison.md",
                             "json_url": f"/runs/{run_id}/report/comparison.json",
+                            "ghost_url": f"/api/ghost/{run_id}",
                         })
         except Exception as exc:
             self.update(run_id, status="failed", progress=100,
@@ -403,6 +404,22 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
                 self._serve_file(files[0], "application/json; charset=utf-8")
             else:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "pose frame not found"})
+            return
+        ghost_match = re.match(r"^/api/ghost/([a-f0-9]{32})$", path)
+        if ghost_match:
+            run_id = ghost_match.group(1)
+            STORE.touch(run_id)  # refresh TTL when the run is still tracked
+            run_dir = STORE.runs_dir / run_id
+            if not run_dir.is_dir():
+                self._json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+                return
+            try:
+                from tools.ghost_data import build_ghost_payload
+                payload = build_ghost_payload(run_dir)
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._json(HTTPStatus.OK, payload)
             return
         status_match = re.match(r"^/api/status/([a-f0-9]{32})$", path)
         if status_match:
