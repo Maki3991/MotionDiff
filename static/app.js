@@ -231,6 +231,7 @@ function renderResult(payload) {
   studentVideo.src = payload.video_urls.student;
   document.querySelector('#reference-video-name').textContent = '参考动作';
   document.querySelector('#student-video-name').textContent = '学员动作';
+  setupGhostOverlay(payload);
   renderStudentFeedback(report.ai_feedback);
   document.querySelector('#findings').innerHTML = (report.findings || []).map((item) => `
     <div class="finding">
@@ -265,6 +266,132 @@ function renderResult(payload) {
 }
 
 const POSE_EDGES = [['left_shoulder','right_shoulder'],['left_shoulder','left_elbow'],['left_elbow','left_wrist'],['right_shoulder','right_elbow'],['right_elbow','right_wrist'],['left_shoulder','left_hip'],['right_shoulder','right_hip'],['left_hip','right_hip'],['left_hip','left_knee'],['left_knee','left_ankle'],['right_hip','right_knee'],['right_knee','right_ankle']];
+
+
+/* ---- Ghost overlay: draw the DTW-aligned reference skeleton on the student video ---- */
+const ghostState = { data: null, byRefIndex: new Map(), byTgtIndex: new Map(), enabled: true };
+
+function ghostFrameAt(frames, timeMs) {
+  if (!frames.length) return null;
+  let low = 0; let high = frames.length - 1;
+  while (low < high) {
+    const mid = (low + high + 1) >> 1;
+    if ((frames[mid].t ?? -Infinity) <= timeMs) low = mid; else high = mid - 1;
+  }
+  return frames[low];
+}
+
+function loadGhost(url) {
+  ghostState.data = null; ghostState.byRefIndex.clear(); ghostState.byTgtIndex.clear();
+  const canvas = document.querySelector('#student-ghost');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  if (!url) return;
+  fetch(url).then((response) => (response.ok ? response.json() : null)).then((data) => {
+    if (!data) return;
+    ghostState.data = data;
+    (data.reference.frames || []).forEach((frame) => ghostState.byRefIndex.set(frame.i, frame));
+    (data.pairs || []).forEach(([refIndex, tgtIndex]) => {
+      ghostState.byTgtIndex.set(tgtIndex, ghostState.byRefIndex.get(refIndex) || null);
+    });
+    drawGhost();
+  }).catch(() => {});
+}
+
+function projectPoints(frame, scaleX, scaleY, transform) {
+  const points = [];
+  (frame.k || []).forEach((keypoint, index) => {
+    if (!keypoint) { points.push(null); return; }
+    let [x, y] = keypoint;
+    if (transform && frame.a && frame.a[2] >= 1) {
+      const refAnchor = transform;
+      if (refAnchor[2] >= 1) {
+        const ratio = refAnchor[2] / frame.a[2];
+        x = refAnchor[0] + (x - frame.a[0]) * ratio;
+        y = refAnchor[1] + (y - frame.a[1]) * ratio;
+      }
+    }
+    points.push([x * scaleX, y * scaleY]);
+  });
+  return points;
+}
+
+function strokeBones(context, points, bones, color, alpha, width) {
+  context.save();
+  context.globalAlpha = alpha;
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.lineCap = 'round';
+  bones.forEach(([a, b]) => {
+    const from = points[a]; const to = points[b];
+    if (!from || !to) return;
+    context.beginPath(); context.moveTo(from[0], from[1]); context.lineTo(to[0], to[1]); context.stroke();
+  });
+  context.restore();
+}
+
+function drawGhost() {
+  const canvas = document.querySelector('#student-ghost');
+  const video = document.querySelector('#student-video');
+  const data = ghostState.data;
+  if (!canvas || !video || !data) return;
+  const context = canvas.getContext('2d');
+  const displayWidth = video.clientWidth || video.videoWidth;
+  const displayHeight = video.clientHeight || video.videoHeight;
+  if (!displayWidth || !displayHeight) return;
+  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+    canvas.width = displayWidth; canvas.height = displayHeight;
+  }
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  if (!ghostState.enabled) return;
+  const studentFrame = ghostFrameAt(data.student.frames, video.currentTime * 1000);
+  if (!studentFrame || !studentFrame.k) return;
+  const scaleX = canvas.width / (data.student.width || 1);
+  const scaleY = canvas.height / (data.student.height || 1);
+
+  // Reference "ghost": transformed into the student frame's anchor (shoulder midpoint + width).
+  const refFrame = ghostState.byTgtIndex.get(studentFrame.i);
+  if (refFrame && refFrame.k && refFrame.a && studentFrame.a) {
+    const refPoints = projectPoints(refFrame, scaleX, scaleY, studentFrame.a);
+    strokeBones(context, refPoints, data.bones, '#f0b15a', 0.55, 3.5);
+    context.save();
+    context.globalAlpha = 0.55;
+    context.fillStyle = '#f0b15a';
+    refPoints.forEach((point) => {
+      if (!point) return;
+      context.beginPath(); context.arc(point[0], point[1], 2.5, 0, Math.PI * 2); context.fill();
+    });
+    context.restore();
+  }
+
+  // Student's own skeleton, solid teal.
+  const studentPoints = projectPoints(studentFrame, scaleX, scaleY, null);
+  strokeBones(context, studentPoints, data.bones, '#61d8c6', 0.95, 3);
+  context.save();
+  context.globalAlpha = 0.95;
+  context.fillStyle = '#61d8c6';
+  studentPoints.forEach((point) => {
+    if (!point) return;
+    context.beginPath(); context.arc(point[0], point[1], 2.5, 0, Math.PI * 2); context.fill();
+  });
+  context.restore();
+}
+
+function setupGhostOverlay(payload) {
+  loadGhost(payload.ghost_url);
+  const video = document.querySelector('#student-video');
+  const toggle = document.querySelector('#ghost-enabled');
+  if (toggle) {
+    toggle.checked = true;
+    ghostState.enabled = true;
+    toggle.addEventListener('change', () => { ghostState.enabled = toggle.checked; drawGhost(); });
+  }
+  if (video && !video.dataset.ghostBound) {
+    video.dataset.ghostBound = '1';
+    ['timeupdate', 'seeked', 'resize', 'loadedmetadata', 'play'].forEach((eventName) => {
+      video.addEventListener(eventName, drawGhost);
+    });
+  }
+}
 async function drawPose(canvasId, url, color) {
   const canvas = document.querySelector(`#${canvasId}`);
   const context = canvas.getContext('2d');
