@@ -115,7 +115,13 @@
 
       <div class="video-grid">
         <article class="video-card"><div class="video-label"><span>参考 A</span><span id="reference-video-name"></span></div><video id="reference-video" controls></video></article>
-        <article class="video-card"><div class="video-label"><span>学员 B</span><span id="student-video-name"></span></div><video id="student-video" controls></video></article>
+        <article class="video-card"><div class="video-label"><span>学员 B</span><span id="student-video-name"></span></div>
+          <div class="video-overlay-wrap">
+            <video id="student-video" controls></video>
+            <canvas id="student-ghost" class="ghost-canvas" aria-hidden="true"></canvas>
+          </div>
+          <label class="ghost-toggle"><input type="checkbox" id="ghost-enabled" checked> 叠加参考骨架（Ghost）</label>
+        </article>
       </div>
 
       <article class="pose-preview report-section">
