@@ -1,0 +1,5 @@
+# PocketBay deployment manifest (root-level, standard pip format)
+# Runtime deps for MotionDiff app.py + tools/export_mediapipe_json.py
+# Keep in sync with tools/requirements-mediapipe.txt
+mediapipe==1.0.1
+opencv-contrib-python==4.13.0.92

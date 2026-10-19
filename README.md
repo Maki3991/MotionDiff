@@ -17,7 +17,7 @@ Set-Location "D:\Softwares\Programming Projects\xi'an-hackathon\MotionDiff"
 
 首次在另一台电脑克隆后，需要按照 [环境说明](docs/MEDIAPIPE_EXPORT.md) 建立 `.venv-mediapipe` 并下载模型到 `models/mediapipe/pose_landmarker_full.task`；这些本机依赖不在 Git 仓库中。当前进度与下一步见 [STATUS.md](docs/STATUS.md)，详细功能与结果说明见 [APP_RUN.md](docs/APP_RUN.md)。
 
-VPS、子域名、HTTPS 和 API key 边界见 [VPS_DEPLOYMENT.md](docs/VPS_DEPLOYMENT.md)。当前网页入口先展示五个动作类别，再展示类别内动作；只有“力量 / 体能基础 → 深蹲”进入已实现的视频比较，其他动作会显示开发中状态。
+VPS、子域名、HTTPS 和 API key 边界见 [VPS_DEPLOYMENT.md](docs/VPS_DEPLOYMENT.md)。当前网页入口先展示五个动作类别，再展示类别内动作；“力量 / 体能基础”下的深蹲、弓步蹲、硬拉、罗马尼亚硬拉、保加利亚分腿蹲由动作配置驱动（`tools/action_config.py`）进入已实现的视频比较，网页从 `/api/actions` 读取已实现清单，未校准动作的相似度指数带「校准中」标记，其他动作显示开发中状态。
 
 ## Git 同步范围
 

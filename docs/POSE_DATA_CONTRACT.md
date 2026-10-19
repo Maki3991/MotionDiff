@@ -30,8 +30,8 @@ The selected interface choice is to provide raw keypoints plus generic normalize
 
 ## 4. Derived features and action-specific data
 
-- The squat action layer stores `comparison.squat_evidence` and `comparison.ai_feedback`. The evidence layer derives side-view knee angle, trunk inclination, thigh angle, hip/knee height relation and foot direction from named MediaPipe landmarks. It gates incomplete, multiple-repetition and low-coverage inputs before an external request.
-- `comparison.ai_feedback` is generated only for `action=squat`. The backend sends derived metrics, quality information and up to four representative evidence images; it does not send source videos, names or paths. The provider must return a strict JSON object with a summary and zero to three suggestions whose evidence IDs are checked server-side. Suggestions are marked `review_status: pending`.
+- The configured action layer stores `comparison.action_evidence` and `comparison.ai_feedback`. The evidence layer derives side-view knee angle, trunk inclination, thigh angle, hip/knee height relation and foot direction from named MediaPipe landmarks. It gates incomplete, multiple-repetition and low-coverage inputs before an external request. Per-action `ActionConfig` (in `tools/action_config.py`) selects the segmentation driver metric, its direction, thresholds, phase labels and wording; new actions that share the shoulder/hip/knee/ankle landmark chain join by config alone.
+- `comparison.ai_feedback` is generated for implemented actions (`squat`, `lunge`, `deadlift`). The backend sends derived metrics, quality information and up to four representative evidence images; it does not send source videos, names or paths. The provider must return a strict JSON object with a summary and zero to three suggestions whose evidence IDs are checked server-side. Suggestions are marked `review_status: pending`.
 - If AI is disabled, unavailable, times out or returns invalid evidence, the complete local comparison report remains available and the AI section shows a sanitized status. Generic comparison requests do not call the AI provider.
 - Joint angles, selected keypoint groups, movement phases, and coaching rules belong to the comparison/action layer unless a future engine adapter provides a clearly documented derived field.
 - Derived fields must identify the rule/version that produced them.
@@ -91,9 +91,9 @@ This is illustrative, not a locked serialization format:
 - Return a processing/quality status when no usable person or too few required keypoints are detected.
 - Do not convert missing data into a zero-valued joint position.
 
-## 9. Squat evidence payload
+## 9. Action evidence payload
 
-`tools/squat_evidence.py` returns a versioned evidence object with `status`, `reasons`, per-clip coverage/selected anatomical side, five phase windows (`standing`, `descent`, `bottom`, `ascent`, `finish`), metric medians/ranges and paired evidence IDs. The supported dimensions are `knee_trajectory`, `depth` and `trunk_angle`; a dimension may be absent when its required landmarks or stable foot direction are unavailable. This is a feature extraction contract, not a correctness classifier.
+`tools/action_evidence.py` (with `tools/squat_evidence.py` kept as a squat-configured compatibility shim) returns a versioned evidence object with `status`, `reasons`, per-clip coverage/selected anatomical side, five phase windows (`standing`, `descent`, `bottom`, `ascent`, `finish`), metric medians/ranges and paired evidence IDs. Phase labels and the segmentation driver come from the action's `ActionConfig`. The supported dimensions are `knee_trajectory`, `depth` and `trunk_angle`; a dimension may be absent when its required landmarks or stable foot direction are unavailable. This is a feature extraction contract, not a correctness classifier.
 
 The provider-facing copy removes internal femur-scale ratios and expresses them as cautious anatomical height relations. Internal evidence is retained in the local JSON report for debugging and review.
 

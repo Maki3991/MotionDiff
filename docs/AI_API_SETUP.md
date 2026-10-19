@@ -22,7 +22,7 @@ AI_MAX_OUTPUT_TOKENS=1200
 - `.env`：本机填写，已加入 `.gitignore`。
 - `.env.example`：不含真实密钥的配置模板，可以提交到 Git。
 - 本机 `.env` 已启用 AI；`.env.example` 保持关闭默认值。`AI_ENABLED=false` 时仅显示本地报告，不请求外部服务。
-- AI 请求由后端发出，浏览器接收脱敏后的建议和本地证据。`action=squat` 启用深蹲流程；历史通用比较不调用 AI。
+- AI 请求由后端发出，浏览器接收脱敏后的建议和本地证据。已配置动作（当前 `squat` / `lunge` / `deadlift`，见 `tools/action_config.py`）启用对应流程；历史通用比较不调用 AI。
 - 真实测试确认 `gpt-6.1-sol` 能通过 `/v1/responses` 接收文字指标和四张 JPEG、使用严格 JSON Schema 返回中文建议；也验证了零建议和超时状态。
 
 ## 接口与请求边界
