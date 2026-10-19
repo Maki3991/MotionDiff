@@ -50,22 +50,27 @@ def hip_hinge_sequence():
 
 class ActionConfigTests(unittest.TestCase):
     def test_registry_has_unique_ids_and_five_phases_each(self):
-        self.assertEqual(len(ACTIONS), 3)
+        self.assertEqual(len(ACTIONS), 5)
         for config in ACTIONS.values():
             self.assertEqual([phase_id for phase_id, _ in config.phases], list(PHASE_IDS))
             self.assertTrue(all(label for _, label in config.phases))
         self.assertEqual(ACTIONS["squat"].noun, "深蹲")
         self.assertEqual(ACTIONS["lunge"].noun, "弓步蹲")
         self.assertEqual(ACTIONS["deadlift"].noun, "硬拉")
+        self.assertEqual(ACTIONS["romanian-deadlift"].noun, "罗马尼亚硬拉")
+        self.assertEqual(ACTIONS["bulgarian-split-squat"].noun, "保加利亚分腿蹲")
         self.assertEqual(get_action("lunge").name, "弓步蹲")
         self.assertIsNone(get_action("shooting"))
 
     def test_catalog_payload_matches_frontend_contract(self):
         payload = catalog_payload()
-        self.assertEqual({item["id"] for item in payload}, {"squat", "lunge", "deadlift"})
+        self.assertEqual({item["id"] for item in payload},
+                         {"squat", "lunge", "deadlift", "romanian-deadlift", "bulgarian-split-squat"})
         for item in payload:
             self.assertIn("capture_hint", item)
             self.assertIn("capture_protocol", item)
+            self.assertIn("calibrated", item)
+            self.assertFalse(item["calibrated"])
             self.assertEqual(item["category"], "strength")
 
 
@@ -98,9 +103,27 @@ class ConfigDrivenSegmentationTests(unittest.TestCase):
         self.assertEqual(accepted["status"], "complete")
 
     def test_multiple_reps_rejected_for_new_actions(self):
-        for config in (ACTIONS["lunge"], ACTIONS["deadlift"]):
+        for config in (ACTIONS["lunge"], ACTIONS["deadlift"],
+                       ACTIONS["romanian-deadlift"], ACTIONS["bulgarian-split-squat"]):
             evidence = build_evidence(deep_knee_bend_sequence(repeats=2), deep_knee_bend_sequence(), config)
             self.assertEqual(evidence["status"], "insufficient_data", config.id)
+
+    def test_romanian_deadlift_uses_trunk_driver(self):
+        evidence = build_evidence(hip_hinge_sequence(), hip_hinge_sequence(), ACTIONS["romanian-deadlift"])
+        self.assertEqual(evidence["status"], "complete", evidence["reasons"])
+        self.assertEqual(evidence["action"], "romanian-deadlift")
+        bottom = evidence["clips"]["reference"]["windows"]["bottom"]
+        self.assertGreater(bottom["metrics"]["trunk_inclination_deg"]["median"], 30)
+
+    def test_bulgarian_split_squat_uses_knee_driver(self):
+        evidence = build_evidence(deep_knee_bend_sequence(), deep_knee_bend_sequence(),
+                                  ACTIONS["bulgarian-split-squat"])
+        self.assertEqual(evidence["status"], "complete", evidence["reasons"])
+        self.assertEqual(evidence["action"], "bulgarian-split-squat")
+        labels = [item["phase_label"] for item in evidence["evidence"]]
+        self.assertEqual(labels[1], "下沉中段")
+        bottom = evidence["clips"]["reference"]["windows"]["bottom"]
+        self.assertLess(bottom["metrics"]["knee_angle_deg"]["median"], 120)
 
     def test_measured_difference_surfaces_in_evidence(self):
         student = hip_hinge_sequence()
@@ -121,6 +144,8 @@ class ActionPromptTests(unittest.TestCase):
         deadlift = build_instructions(ACTIONS["deadlift"])
         self.assertIn("硬拉", deadlift)
         self.assertNotIn("深蹲", deadlift)
+        romanian = build_instructions(ACTIONS["romanian-deadlift"])
+        self.assertIn("罗马尼亚硬拉", romanian)
 
     def test_feedback_request_uses_action_instructions_and_schema_name(self):
         evidence = build_evidence(deep_knee_bend_sequence(), deep_knee_bend_sequence(), ACTIONS["lunge"])

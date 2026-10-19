@@ -24,6 +24,7 @@ class ActionConfig:
     phases: tuple[tuple[str, str], ...]  # (phase_id, 中文阶段标签)
     capture_hint: str         # 输入区短提示
     capture_protocol: str     # 拍摄条件长提示
+    calibrated: bool = False  # 是否有带标签素材校准过阈值；False 时界面标「校准中」
 
 
 PHASE_IDS = ("standing", "descent", "bottom", "ascent", "finish")
@@ -62,7 +63,31 @@ DEADLIFT = ActionConfig(
 )
 
 
-ACTIONS: dict[str, ActionConfig] = {config.id: config for config in (SQUAT, LUNGE, DEADLIFT)}
+ROMANIAN_DEADLIFT = ActionConfig(
+    id="romanian-deadlift", name="罗马尼亚硬拉", noun="罗马尼亚硬拉", category="strength",
+    primary_metric="trunk_inclination_deg", active_direction="increase",
+    standing_limit=25.0, min_excursion=10.0,
+    flow="直立→下放→拉起", edge_label="直立",
+    phases=(("standing", "直立准备"), ("descent", "下放中段"), ("bottom", "最低位"),
+            ("ascent", "拉起中段"), ("finish", "直立锁定")),
+    capture_hint="直立→下放→拉起 · 每段一次完整罗马尼亚硬拉",
+    capture_protocol="相近侧面机位与距离；一人完整出镜；每段一次完整罗马尼亚硬拉，负重全程入镜",
+)
+
+BULGARIAN_SPLIT_SQUAT = ActionConfig(
+    id="bulgarian-split-squat", name="保加利亚分腿蹲", noun="保加利亚分腿蹲", category="strength",
+    primary_metric="knee_angle_deg", active_direction="decrease",
+    standing_limit=150.0, min_excursion=10.0,
+    flow="站立→下蹲→起身", edge_label="站立",
+    phases=(("standing", "站立准备"), ("descent", "下沉中段"), ("bottom", "最低位"),
+            ("ascent", "起身中段"), ("finish", "结束站立")),
+    capture_hint="站立→下蹲→起身 · 每段一次完整保加利亚分腿蹲",
+    capture_protocol="相近侧面机位与距离；一人完整出镜；每段一次完整保加利亚分腿蹲，后脚支撑位置入镜",
+)
+
+
+ACTIONS: dict[str, ActionConfig] = {config.id: config for config in
+                                    (SQUAT, LUNGE, DEADLIFT, ROMANIAN_DEADLIFT, BULGARIAN_SPLIT_SQUAT)}
 
 
 def get_action(action_id: str) -> ActionConfig | None:
@@ -72,5 +97,6 @@ def get_action(action_id: str) -> ActionConfig | None:
 def catalog_payload() -> list[dict]:
     """Implemented actions as consumed by the frontend catalog and /api/actions."""
     return [{"id": config.id, "name": config.name, "category": config.category,
-             "capture_hint": config.capture_hint, "capture_protocol": config.capture_protocol}
+             "capture_hint": config.capture_hint, "capture_protocol": config.capture_protocol,
+             "calibrated": config.calibrated}
             for config in ACTIONS.values()]

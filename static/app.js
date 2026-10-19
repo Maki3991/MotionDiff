@@ -12,6 +12,8 @@ const ACTION_CATALOG = [
       { id: 'plank', name: '平板支撑' },
       { id: 'pull-up', name: '引体向上' },
       { id: 'deadlift', name: '硬拉姿势' },
+      { id: 'romanian-deadlift', name: '罗马尼亚硬拉' },
+      { id: 'bulgarian-split-squat', name: '保加利亚分腿蹲' },
     ],
   },
   {
@@ -61,6 +63,7 @@ function applyActionAvailability(actions) {
       action.available = true;
       action.captureHint = server.capture_hint;
       action.captureProtocol = server.capture_protocol;
+      action.calibrated = server.calibrated;
     });
   });
   renderCategoryCards();
@@ -244,6 +247,9 @@ function renderResult(payload) {
   document.querySelector('#metric-delta').textContent = unjudgeable || summary.mean_position_delta_shoulder_widths == null ? '无法判断' : format(summary.mean_position_delta_shoulder_widths, 3);
   document.querySelector('#metric-coverage').textContent = `${Math.round((alignment.coverage_reference || 0) * 100)}% / ${Math.round((alignment.coverage_target || 0) * 100)}%`;
   document.querySelector('#metric-time').textContent = run.elapsed_seconds == null ? '—' : `${Number(run.elapsed_seconds).toFixed(1)}s`;
+  document.querySelector('#calibration-note').textContent = selectedAction.calibrated
+    ? '仅用于本次相对比较'
+    : '校准中 · 仅用于本次相对比较';
   document.querySelector('#finding-count').textContent = (report.findings || []).length;
   document.querySelector('#report-link').href = payload.report_url || '#';
   const refVideo = document.querySelector('#reference-video');
