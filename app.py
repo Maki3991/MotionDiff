@@ -20,6 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote, urlparse
 
+from tools.action_config import ACTIONS, catalog_payload, get_action
 from tools.ai_feedback import AIConfig, generate_feedback, load_env
 
 
@@ -217,28 +218,30 @@ class JobStore:
             if len(reference_sequence["frames"]) * len(student_sequence["frames"]) > MAX_ALIGNMENT_CELLS:
                 raise ValueError("实际视频帧数超过比较预算，请剪短视频或降低帧率。")
             result = compare(reference_sequence, student_sequence)
-            if action == "squat":
-                self.update(run_id, progress=86, message="提取深蹲阶段与动作证据")
-                from tools.squat_evidence import build_evidence, evidence_images
+            action_config = get_action(action)
+            if action_config is not None:
+                self.update(run_id, progress=86, message=f"提取{action_config.name}阶段与动作证据")
+                from tools.action_evidence import build_evidence, evidence_images
                 try:
-                    evidence = build_evidence(reference_sequence, student_sequence)
+                    evidence = build_evidence(reference_sequence, student_sequence, action_config)
                 except Exception:
-                    evidence = {"status": "insufficient_data", "reasons": ["深蹲证据提取失败，本地比较报告已保留。"]}
-                result["squat_evidence"] = evidence
+                    evidence = {"status": "insufficient_data", "reasons": [f"{action_config.name}证据提取失败，本地比较报告已保留。"]}
+                result["action"] = action_config.id
+                result["action_evidence"] = evidence
                 if self.is_delete_requested(run_id):
                     return
-                self.update(run_id, progress=90, message="正在检查深蹲证据并生成 AI 建议")
+                self.update(run_id, progress=90, message=f"正在检查{action_config.name}证据并生成 AI 建议")
                 try:
-                    config = AIConfig.from_env()
+                    ai_config = AIConfig.from_env()
                     result["ai_feedback"] = generate_feedback(
-                        config, evidence,
+                        ai_config, evidence,
                         lambda: evidence_images(evidence, reference_path, student_path, cv2),
                     )
                 except (ValueError, TypeError):
                     result["ai_feedback"] = {"status": "error", "message": "AI 环境变量无效，本地报告已保留。"}
-                result["limitations"][1] = "深蹲建议要求相近的侧面机位；二维单目数据不能消除机位差异。"
+                result["limitations"][1] = f"{action_config.name}建议要求相近的侧面机位；二维单目数据不能消除机位差异。"
             else:
-                result["ai_feedback"] = {"status": "unsupported", "message": "本次为通用比较，AI 建议目前仅支持侧面单次深蹲。"}
+                result["ai_feedback"] = {"status": "unsupported", "message": "本次为通用比较，AI 建议目前支持深蹲、弓步蹲和硬拉。"}
             top_finding = (result.get("findings") or [None])[0]
             if self.is_delete_requested(run_id):
                 return
@@ -363,6 +366,9 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
                 "max_video_bytes": MAX_VIDEO_BYTES,
                 "max_upload_bytes": MAX_UPLOAD_BYTES,
             })
+            return
+        if path == "/api/actions":
+            self._json(HTTPStatus.OK, {"actions": catalog_payload()})
             return
         if path == "/" or path == "/index.html":
             self._serve_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
@@ -493,7 +499,7 @@ class MotionDiffHandler(BaseHTTPRequestHandler):
                 })
                 return
             action = files.get("action", ("", b"generic"))[1].decode("utf-8", errors="replace")
-            if action not in ("generic", "squat"):
+            if action not in ("generic", *ACTIONS):
                 self._json(HTTPStatus.BAD_REQUEST, {"error": "当前不支持此动作。"})
                 return
             run_id = STORE.create(reference, student, reference_name, student_name, action)

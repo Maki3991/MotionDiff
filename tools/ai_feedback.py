@@ -12,6 +12,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from tools.action_config import ACTIONS, ActionConfig, get_action
+
 
 def load_env(path: Path) -> None:
     """Load simple dotenv assignments, keeping process environment authoritative."""
@@ -108,6 +110,18 @@ class FeedbackError(Exception):
         super().__init__(code)
 
 
+def feedback_action(evidence: dict) -> ActionConfig:
+    """Resolve the action config recorded in the evidence payload."""
+    return get_action(str(evidence.get("action") or "squat")) or ACTIONS["squat"]
+
+
+def build_instructions(config: ActionConfig) -> str:
+    """Squat-tuned prompt retargeted to the configured action by name."""
+    if config.noun == "深蹲":
+        return INSTRUCTIONS
+    return INSTRUCTIONS.replace("深蹲", config.noun)
+
+
 def provider_evidence(evidence: dict) -> dict:
     """Send only needed metrics, with internal height ratios expressed anatomically."""
     value = deepcopy(evidence)
@@ -127,16 +141,17 @@ def provider_evidence(evidence: dict) -> dict:
     return value
 
 
-def request_response(config: AIConfig, evidence: dict, images: list[dict], *, opener=urlopen) -> dict:
+def request_response(config: AIConfig, evidence: dict, images: list[dict], *, opener=urlopen,
+                     instructions: str = INSTRUCTIONS, format_name: str = "squat_feedback") -> dict:
     content = [{"type": "input_text", "text": json.dumps(provider_evidence(evidence), ensure_ascii=False)}]
     for item in images:
         content += [{"type": "input_text", "text": item["label"]},
                     {"type": "input_image", "image_url": item["data_url"], "detail": "low"}]
-    body = {"model": config.model, "instructions": INSTRUCTIONS,
+    body = {"model": config.model, "instructions": instructions,
             "input": [{"role": "user", "content": content}],
             "reasoning": {"effort": "low"},
             "store": False, "max_output_tokens": config.max_tokens,
-            "text": {"format": {"type": "json_schema", "name": "squat_feedback",
+            "text": {"format": {"type": "json_schema", "name": format_name,
                                  "strict": True, "schema": SCHEMA}}}
     request = Request(config.endpoint(), data=json.dumps(body).encode("utf-8"),
                       headers={"Authorization": "Bearer " + config.key,
@@ -226,9 +241,13 @@ def generate_feedback(config: AIConfig, evidence: dict, image_factory, *, opener
     except ValueError:
         return {"status": "error", "error_code": "configuration", "message": ERROR_MESSAGES["configuration"]}
     started = time.perf_counter()
+    action = feedback_action(evidence)
     try:
         images = image_factory()
-        result = validate_feedback(request_response(config, evidence, images, opener=opener), evidence, config.key)
+        result = validate_feedback(request_response(
+            config, evidence, images, opener=opener,
+            instructions=build_instructions(action),
+            format_name=f"{action.id}_feedback"), evidence, config.key)
         result["image_count"] = len(images)
         result["request_elapsed_seconds"] = round(time.perf_counter() - started, 2)
         result["timeout_seconds"] = config.timeout

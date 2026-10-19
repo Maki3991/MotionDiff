@@ -52,20 +52,20 @@
     <div class="page-nav"><button class="back-button" id="back-to-actions-from-analysis" type="button" aria-label="返回动作列表">← <span>动作列表</span></button><span class="step-label">03 / 视频分析</span></div>
     <section class="intro">
       <div>
-        <p class="eyebrow">参考动作 / 学员动作</p>
+        <p class="eyebrow" id="analysis-eyebrow">参考动作 / 学员动作</p>
         <h1>把两个视频放在同一套动作轨迹上比较</h1>
         <p class="lede">选择教练参考视频和学员视频。系统会逐帧提取人体关键点，按动作进度对齐，并标出可回看的位置差异。</p>
       </div>
       <div class="protocol">
         <span class="protocol-dot"></span>
-        <div><strong>建议拍摄条件</strong><br><span>相近侧面机位与距离；一人完整出镜；每段一次完整深蹲</span></div>
+        <div><strong>建议拍摄条件</strong><br><span id="capture-protocol">相近侧面机位与距离；一人完整出镜；每段一次完整深蹲</span></div>
       </div>
     </section>
 
     <section class="workspace-panel" aria-labelledby="input-title">
       <div class="section-head">
         <div><p class="eyebrow">输入</p><h2 id="input-title">选择两段视频</h2></div>
-        <span class="format-note">站立→下蹲→起身 · 每段最多 60 秒、50 MB</span>
+        <span class="format-note" id="capture-hint">站立→下蹲→起身 · 每段最多 60 秒、50 MB</span>
       </div>
       <form id="analysis-form">
         <div class="upload-grid">

@@ -50,6 +50,22 @@ const views = {
   analysis: document.querySelector('#analysis-view'),
 };
 let selectedCategory = ACTION_CATALOG[0];
+let selectedAction = ACTION_CATALOG[0].actions[0];
+
+function applyActionAvailability(actions) {
+  const serverActions = new Map(actions.map((action) => [action.id, action]));
+  ACTION_CATALOG.forEach((category) => {
+    category.actions.forEach((action) => {
+      const server = serverActions.get(action.id);
+      if (!server) return;
+      action.available = true;
+      action.captureHint = server.capture_hint;
+      action.captureProtocol = server.capture_protocol;
+    });
+  });
+  renderCategoryCards();
+  routeFromHash();
+}
 
 function findCategory(categoryId) {
   return ACTION_CATALOG.find((category) => category.id === categoryId) || ACTION_CATALOG[0];
@@ -122,7 +138,12 @@ function routeFromHash() {
       window.location.hash = `coming/${category.id}/${action.id}`;
       return;
     }
+    selectedAction = action;
     renderActionCards(category);
+    document.querySelector('#analysis-eyebrow').textContent = `${action.name} · 参考动作 / 学员动作`;
+    document.querySelector('#capture-protocol').textContent = action.captureProtocol
+      || '相近侧面机位与距离；一人完整出镜；每段一次完整动作';
+    document.querySelector('#capture-hint').textContent = `${action.captureHint || '一次完整动作'} · 每段最多 60 秒、50 MB`;
     showView('analysis');
     return;
   }
@@ -526,7 +547,7 @@ form.addEventListener('submit', async (event) => {
   const data = new FormData();
   data.append('reference', reference);
   data.append('student', student);
-  data.append('action', 'squat');
+  data.append('action', selectedAction.id || 'squat');
   try {
     const limitsResponse = await fetch('/api/limits');
     if (!limitsResponse.ok) throw new Error('无法读取上传限制，请稍后重试。');
@@ -574,5 +595,10 @@ document.querySelector('#back-to-catalog-from-coming').addEventListener('click',
 document.querySelector('#coming-back-action').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
 document.querySelector('#coming-back-library').addEventListener('click', () => { window.location.hash = 'library'; });
 document.querySelector('#back-to-actions-from-analysis').addEventListener('click', () => { window.location.hash = `actions/${selectedCategory.id}`; });
+
+fetch('/api/actions')
+  .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+  .then((payload) => applyActionAvailability(payload.actions || []))
+  .catch(() => { /* 服务器不可达时保持本地目录：仅深蹲可用 */ });
 
 routeFromHash();
